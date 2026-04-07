@@ -1,0 +1,22 @@
+[
+  {
+    "sessionId": "session-1",
+    "role": "user",
+    "text": "새 프로젝트 만들고 MCP 연결해줘"
+  },
+  {
+    "sessionId": "session-1",
+    "role": "system",
+    "text": "프로젝트 생성 및 연결 완료. 다음 명령 대기중"
+  },
+  {
+    "sessionId": "session-2",
+    "role": "user",
+    "text": "워커 상태 확인"
+  },
+  {
+    "sessionId": "session-2",
+    "role": "system",
+    "text": "정상 응답 확인"
+  }
+]

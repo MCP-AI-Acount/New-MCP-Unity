@@ -1,0 +1,19 @@
+# Option — 보조 설명·기능 정리 (실제 MCP 연결은 1_Main/mcp.json 만 사용)
+
+[범용·보조 성격 MCP]
+Context7: 라이브러리·프레임워크 문서 검색 보조
+interactive: 사용자와의 대화형 상호작용 보조
+canva-dev: Canva 쪽 디자인·앱 개발 CLI 보조
+n8n: 로컬/원격 n8n API로 워크플로 조회·실행 보조
+
+[서비스별 기능 요약]
+notion: 노션 페이지·연결 테스트
+YouTube: Data API v3 기반 동영상·채널 정보 (API 키·토큰 설정 필요)
+NaverNews: 네이버 뉴스 검색
+Facebook: 페이지·게시물 등 (액세스 토큰·앱 정보)
+KakaoTalk: 메시지·친구·프로필 (REST 키·액세스 토큰)
+notion-calendar: 노션 DB 캘린더 이벤트 CRUD
+google-calendar: Google Calendar 이벤트·캘린더 목록 (API 키 또는 OAuth)
+google-sheets: 시트 읽기/행 추가, 스크린샷 OCR+템플릿 후 저장 (OAuth token_sheets.json, Tesseract)
+apple-calendar: CalDAV 기반 애플 캘린더
+unity6: 2_option/mcp.json 으로 분리 (유니티 프로젝트 전용)

@@ -1,0 +1,5 @@
+# NewMCP mcp.json 배치 규칙 (결론)
+
+- 1_Main/mcp.json : 기본 사용 MCP 서버 + Cloud Run 연결 설정
+- 2_option/mcp.json : 프로젝트 특화/선택 서버 (현재 unity6)
+- Option/ : 보조 설명·기능 요약 텍스트만 보관

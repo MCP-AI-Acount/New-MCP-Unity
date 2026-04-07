@@ -1,0 +1,24 @@
+{
+  "append_range": "시트1!A:Z",
+  "columns": ["날짜", "제목", "금액", "비고"],
+  "defaults": {
+    "비고": ""
+  },
+  "extract": [
+    {
+      "column": "날짜",
+      "pattern": "날짜[:：\\s]*([^\\n]+)",
+      "flags": "MULTILINE"
+    },
+    {
+      "column": "제목",
+      "pattern": "제목[:：\\s]*([^\\n]+)",
+      "flags": "MULTILINE"
+    },
+    {
+      "column": "금액",
+      "pattern": "(?:금액|원)[:：\\s]*([0-9,]+)",
+      "flags": "MULTILINE"
+    }
+  ]
+}

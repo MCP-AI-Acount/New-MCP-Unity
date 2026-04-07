@@ -1,0 +1,14 @@
+# Google Calendar MCP (MCP_Server/google_calendar_mcp.py)
+
+## GOOGLE_API_KEY (mcp.json env 또는 시스템 환경변수)
+- Google Cloud Console → API 및 서비스 → 사용자 인증 정보 → API 키
+- Calendar API를 사용하려면 해당 프로젝트에서 Calendar API를 사용 설정해야 함
+- API 키만으로는 캘린더 쓰기/비공개 캘린더 접근이 제한될 수 있음. 전체 기능(목록/생성/수정/삭제)은 OAuth 권장
+
+## OAuth 사용 시 (GOOGLE_API_KEY 미설정)
+- 같은 폴더(MCP_Server)에 credentials.json 배치 (데스크톱 OAuth 클라이언트 JSON)
+- 최초 실행 시 브라우저 로그인 후 token.json이 같은 폴더에 생성됨
+- credentials.json / token.json은 Git에 올리지 말 것
+
+## mcp.json
+- "google-calendar" 항목의 env.GOOGLE_API_KEY에 키를 넣거나, 비우고 OAuth만 사용

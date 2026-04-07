@@ -1,0 +1,17 @@
+sleepwatcher (macOS sleep/wake hook)
+fastapi
+uvicorn[standard]
+google-api-python-client
+google-auth
+google-auth-oauthlib
+pillow
+pytesseract
+# NewMCP Python MCP — google-calendar (MCP_Server/google_calendar_mcp.py)
+mcp
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# 스크린샷 OCR → 시트 (common/ocr_image.py, collaboration/screenshot_to_sheet_pipeline.py)
+Pillow
+pytesseract

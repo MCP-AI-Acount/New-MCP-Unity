@@ -1,0 +1,10 @@
+{
+  "cloudRun": "Cloud Run: unknown",
+  "unityWorker": "Unity Worker: unknown",
+  "n8n": {
+    "lastResult": "unknown",
+    "lastTime": "-"
+  },
+  "latestScreenshotUrl": "",
+  "debugSummary": "수동 새로고침 버튼으로만 갱신됩니다."
+}

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>원격 개발 대시보드</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <h2>명령 기록</h2>
+          <button id="closeSidebarBtn" class="ghost-btn">숨기기</button>
+        </div>
+        <div class="sidebar-tools">
+          <button id="refreshHistoryBtn" class="primary-btn">기록 새로고침</button>
+        </div>
+        <ul id="sessionList" class="session-list"></ul>
+      </aside>
+
+      <main class="main-layout">
+        <section class="status-panel">
+          <div class="status-header">
+            <button id="openSidebarBtn" class="ghost-btn">기록 보기</button>
+            <h1>원격 상태 패널</h1>
+            <button id="refreshStatusBtn" class="primary-btn">상태 새로고침</button>
+          </div>
+          <div class="status-grid">
+            <article class="status-card">
+              <h3>서비스 상태</h3>
+              <p id="serviceStatusText">아직 불러오지 않음</p>
+            </article>
+            <article class="status-card">
+              <h3>n8n 최근 실행</h3>
+              <p id="n8nStatusText">아직 불러오지 않음</p>
+            </article>
+            <article class="status-card">
+              <h3>최신 스크린샷</h3>
+              <a id="screenshotLink" href="#" target="_blank" rel="noopener noreferrer">열기</a>
+            </article>
+            <article class="status-card">
+              <h3>디버그 요약</h3>
+              <p id="debugSummaryText">아직 불러오지 않음</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="chat-panel">
+          <header class="chat-header">
+            <h2 id="chatTitle">세션</h2>
+          </header>
+          <div id="messageList" class="message-list"></div>
+          <footer class="composer">
+            <textarea id="commandInput" placeholder="아이폰에서 내릴 명령을 입력하세요"></textarea>
+            <div class="composer-actions">
+              <button id="sendCommandBtn" class="primary-btn">명령 저장</button>
+            </div>
+          </footer>
+        </section>
+      </main>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
