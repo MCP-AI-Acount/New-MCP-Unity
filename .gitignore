@@ -48,3 +48,10 @@ rules/.env.local
 # IDE
 .idea/
 .vscode/
+
+# Cloud runtime secrets & artifacts (cloud-ready branch)
+secrets/
+*.p12
+*.p8
+temp/agent-secrets.env
+temp/news_to_comic/

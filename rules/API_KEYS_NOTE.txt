@@ -1,0 +1,31 @@
+[Cloud Runtime Required Secrets]
+
+1) GEMINI_API_KEY
+   - Purpose: Gemini text/image generation API
+
+2) GOOGLE_CLIENT_ID
+   - Purpose: Google OAuth client
+
+3) GOOGLE_CLIENT_SECRET
+   - Purpose: Google OAuth client secret
+
+4) GOOGLE_REFRESH_TOKEN
+   - Purpose: Refresh access token for Google Slides API
+
+5) GOOGLE_PRESENTATION_ID
+   - Purpose: Target Google PPT(Slides) document id
+
+[Where to place]
+- Recommended: /home/ubuntu/.config/agent-secrets.env
+- Alternative: /workspace/temp/agent-secrets.env (temporary testing only)
+
+[Format example]
+GEMINI_API_KEY=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+GOOGLE_PRESENTATION_ID=...
+
+[Security rules]
+- Never commit secret values to git.
+- Rotate compromised keys immediately.
