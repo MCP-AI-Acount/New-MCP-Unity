@@ -18,8 +18,9 @@
 
 ## n8n
 
-- `N8N_WEBHOOK_URL`
-- 필요 시 `N8N_API_KEY`
+- 전역 설치·MCP 연동: `rules/api_keys_n8n.md`
+- `N8N_WEBHOOK_URL` (Python 웹훅 로그)
+- MCP: `N8N_API_KEY` + `N8N_API_URL` (`http://localhost:5678/api/v1`)
 
 ## Unity 로그인
 

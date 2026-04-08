@@ -1,23 +1,52 @@
 #!/usr/bin/env python3
 import json
 import os
+import random
 from datetime import datetime
 from typing import Any, Dict, List
-from urllib import error, request
+from urllib import error, parse, request
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 from pydantic import BaseModel
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(ROOT, "data")
 STATIC_DIR = os.path.join(ROOT, "static")
+_REPO_ROOT = os.path.dirname(ROOT)
+
+
+def _load_env_file(path: str) -> None:
+  if not os.path.isfile(path):
+    return
+  with open(path, encoding="utf-8") as f:
+    for line in f:
+      line = line.strip()
+      if not line or line.startswith("#"):
+        continue
+      if "=" not in line:
+        continue
+      k, _, v = line.partition("=")
+      k, v = k.strip(), v.strip().strip('"').strip("'")
+      if k and k not in os.environ:
+        os.environ[k] = v
+
+
+_load_env_file(os.path.join(_REPO_ROOT, "rules", ".env.local"))
+_load_env_file(os.path.join(ROOT, ".env"))
 
 SESSIONS_FILE = os.path.join(DATA_DIR, "chat_sessions.json")
 MESSAGES_FILE = os.path.join(DATA_DIR, "messages.json")
 STATUS_FILE = os.path.join(DATA_DIR, "status.json")
+QUEUE_FILE = os.path.join(DATA_DIR, "command_queue.json")
+SITE_CONFIG_FILE = os.path.join(DATA_DIR, "site_config.json")
+CURSOR_RULES_FILE = os.environ.get(
+  "CURSOR_RULES_FILE", os.path.join(DATA_DIR, "cursor_top_rules.md")
+)
 
 
 def _read_json(path: str, default: Any) -> Any:
@@ -31,6 +60,111 @@ def _write_json(path: str, data: Any) -> None:
   os.makedirs(os.path.dirname(path), exist_ok=True)
   with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _site_config() -> Dict[str, Any]:
+  return _read_json(SITE_CONFIG_FILE, {})
+
+
+def _effective_setting(key: str, env_key: str, default: str = "") -> str:
+  cfg = _site_config()
+  v = str(cfg.get(key) or "").strip()
+  if v:
+    return v
+  return str(os.environ.get(env_key, default) or "").strip()
+
+
+def _compute_progress(
+  session_id: str,
+  queue_items: List[Dict[str, Any]],
+  st: Dict[str, Any],
+) -> Dict[str, Any]:
+  now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  sid = (session_id or "").strip()
+  filtered = [q for q in queue_items if not sid or q.get("sessionId") == sid]
+  failed = [q for q in filtered if q.get("status") == "failed"]
+  queued = [q for q in filtered if q.get("status") == "queued"]
+  sent = [q for q in filtered if q.get("status") == "sent"]
+  sorted_q = sorted(filtered, key=lambda x: str(x.get("createdAt", "")), reverse=True)
+
+  webhook_ok = bool(_effective_setting("n8nCommandWebhookUrl", "N8N_COMMAND_WEBHOOK_URL", ""))
+  if failed:
+    q_summary = f"실패 {len(failed)}건 — 점검 필요"
+    q_ok = False
+  elif sent:
+    q_summary = f"전송됨 {len(sent)}건 (응답·완료 대기)"
+    q_ok = True
+  elif queued:
+    q_summary = f"대기 {len(queued)}건"
+    q_ok = webhook_ok
+  else:
+    q_summary = "이 세션 큐에 항목 없음"
+    q_ok = True
+
+  q_lines: List[str] = [
+    f"n8n 웹훅: {'설정됨' if webhook_ok else '미설정 (전송 불가)'}",
+  ]
+  for q in sorted_q[:6]:
+    cmd = str(q.get("command", ""))[:96]
+    extra = q.get("resultMessage") or q.get("error") or ""
+    line = f"[{q.get('status', '?')}] {cmd}"
+    if extra:
+      line += f" — {str(extra)[:80]}"
+    q_lines.append(line)
+
+  cr = st.get("cloudRun") or "Cloud Run: 확인 안 됨"
+  uw = st.get("unityWorker") or "Unity Worker: 확인 안 됨"
+  cr_bad = "down" in cr.lower() or "unknown" in cr.lower()
+  uw_bad = "down" in uw.lower() or "unknown" in uw.lower()
+  if cr_bad or uw_bad:
+    s_summary = "일부 서비스 응답 불가 또는 미확인"
+    s_ok = False
+  else:
+    s_summary = "헬스 체크 기준 정상"
+    s_ok = True
+  s_lines = [cr, uw]
+
+  url = (st.get("latestScreenshotUrl") or "").strip()
+  if url:
+    ss_summary = "최신 스크린샷 있음"
+    ss_ok = True
+    ss_lines = [url[:120] + ("…" if len(url) > 120 else "")]
+  else:
+    ss_summary = "스크린샷 없음 (완료·캡처 후 표시)"
+    ss_ok = True
+    ss_lines = []
+
+  dbg = (st.get("debugSummary") or "").strip() or "요약 없음"
+  d_ok = "오류" not in dbg and "실패" not in dbg
+  d_lines = [dbg[:200]]
+
+  ai_on = bool(os.environ.get("OPENAI_API_KEY", "").strip() or os.environ.get("GEMINI_API_KEY", "").strip())
+  hints: List[str] = []
+  if ai_on:
+    hints.append(
+      "「명령 저장」 시 OPENAI/Gemini로 AI 답변이 같은 세션에 이어 붙습니다. 유니티·n8n 실행과는 별개입니다."
+    )
+  else:
+    hints.append(
+      "AI 답변을 받으려면 서버에 OPENAI_API_KEY 또는 GEMINI_API_KEY 를 설정하세요. "
+      "설정 전에는 채팅이 로그로만 저장됩니다."
+    )
+  hints.append(
+    "n8n·워커로 보내려면 「스택 열기」→ 줄 단위 명령 → 「스택 저장」→ 「다음 명령 실행」 순서가 필요합니다."
+  )
+  hints.append("웹훅·헬스 URL·프로젝트 이름·페이지 제목은 좌측 「사이트」에서 바꿀 수 있습니다. (서버에 저장, 환경 변수보다 우선)")
+  if not webhook_ok:
+    hints.append("N8N_COMMAND_WEBHOOK_URL 이 서버(Cloud Run) 환경변수에 없으면 외부로 명령을 보낼 수 없습니다.")
+
+  return {
+    "serverTime": now,
+    "sessionId": sid,
+    "hints": hints,
+    "queue": {"summary": q_summary, "lines": q_lines, "ok": q_ok},
+    "service": {"summary": s_summary, "lines": s_lines, "ok": s_ok},
+    "screenshot": {"summary": ss_summary, "lines": ss_lines, "ok": ss_ok},
+    "debug": {"summary": dbg[:120], "lines": d_lines, "ok": d_ok},
+  }
 
 
 def _get_url_json(url: str, timeout: int = 10) -> Dict[str, Any]:
@@ -52,6 +186,16 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+
+class ClipboardPermissionsMiddleware(BaseHTTPMiddleware):
+  async def dispatch(self, request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Permissions-Policy"] = "clipboard-write=(self), clipboard-read=(self)"
+    return response
+
+
+app.add_middleware(ClipboardPermissionsMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -59,6 +203,238 @@ class MessageIn(BaseModel):
   sessionId: str
   role: str
   text: str
+
+
+class StackIn(BaseModel):
+  sessionId: str
+  rawText: str = ""
+
+
+class AckIn(BaseModel):
+  queueId: str
+  status: str
+  message: str = ""
+  screenshotUrl: str = ""
+
+
+class SessionCreate(BaseModel):
+  title: str = "새 채팅"
+
+
+class RulesUpdate(BaseModel):
+  content: str = ""
+
+
+class SiteConfigIn(BaseModel):
+  siteTitle: str = ""
+  activeProjectName: str = ""
+  n8nCommandWebhookUrl: str = ""
+  n8nStatusUrl: str = ""
+  cloudRunHealthUrl: str = ""
+  unityWorkerHealthUrl: str = ""
+  chatAssistantMode: str = "gemini"
+  cursorBridgeWebhookUrl: str = ""
+
+
+def _append_message(session_id: str, role: str, text: str) -> None:
+  messages = _read_json(MESSAGES_FILE, [])
+  messages.append({"sessionId": session_id, "role": role, "text": text})
+  _write_json(MESSAGES_FILE, messages)
+
+
+def _touch_session(session_id: str) -> None:
+  sessions = _read_json(SESSIONS_FILE, [])
+  for s in sessions:
+    if s.get("id") == session_id:
+      s["updatedAt"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+  _write_json(SESSIONS_FILE, sessions)
+
+
+def _system_prompt_for_chat() -> str:
+  base = (
+    "당신은 이 저장소의 「원격 개발 대시보드」(web-browser: FastAPI + 정적 HTML/CSS/JS)를 돕는 기술 어시스턴트입니다. "
+    "항상 한국어로 답합니다.\n\n"
+    "【중요】 사용자가 UI·화면·레이아웃·스타일·버튼·탭 등을 바꾸고 싶다고 하면 절대 거절하지 마세요. "
+    "「실제 화면을 직접 조작할 수 없다」는 식의 면책 문구로 답하지 마세요. "
+    "대신 다음을 반드시 수행하세요: 수정할 파일 경로(예: web-browser/static/index.html, styles.css, app.js)를 명시하고, "
+    "붙여넣을 수 있는 HTML/CSS/JS 조각, 또는 검색·교체할 코드 블록을 구체적으로 제시하세요. "
+    "이 앱에는 이미 좌측 「사이트」 메뉴로 제목·웹훅·헬스 URL 등을 웹에서 저장하는 기능이 있음을 필요할 때 짧게 안내할 수 있습니다.\n\n"
+    "배포(Cursor, git, Cloud Run)는 사용자 환경에 맡기고, 당신은 코드와 단계만 명확히 제공하면 됩니다.\n"
+    "이 Cloud Run 프로세스는 저장소 파일을 쓰지 못한다는 점은 사용자가 「Cursor용 복사」로 로컬에서 수정하는 흐름과 모순되지 않는다."
+  )
+  if os.path.isfile(CURSOR_RULES_FILE):
+    try:
+      with open(CURSOR_RULES_FILE, encoding="utf-8") as f:
+        rules = f.read(12000)
+      if rules.strip():
+        base += "\n\n[사용자 규칙]\n" + rules
+    except OSError:
+      pass
+  return base
+
+
+def _session_messages_for_llm(session_id: str) -> List[Dict[str, str]]:
+  allm = _read_json(MESSAGES_FILE, [])
+  sess = [m for m in allm if m.get("sessionId") == session_id]
+  out: List[Dict[str, str]] = []
+  for m in sess[-40:]:
+    r = m.get("role", "user")
+    t = str(m.get("text", ""))
+    if r == "user":
+      out.append({"role": "user", "content": t})
+    elif r == "assistant":
+      out.append({"role": "assistant", "content": t})
+    else:
+      out.append({"role": "user", "content": "[시스템 로그]\n" + t})
+  return out
+
+
+def _call_openai_chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
+  payload = json.dumps(
+    {
+      "model": model,
+      "messages": [{"role": "system", "content": _system_prompt_for_chat()}, *messages],
+      "max_tokens": 2048,
+      "temperature": 0.6,
+    },
+    ensure_ascii=False,
+  ).encode("utf-8")
+  req = request.Request(
+    "https://api.openai.com/v1/chat/completions",
+    data=payload,
+    headers={
+      "Content-Type": "application/json",
+      "Authorization": f"Bearer {api_key}",
+    },
+    method="POST",
+  )
+  with request.urlopen(req, timeout=120) as resp:
+    data = json.loads(resp.read().decode("utf-8"))
+  return str(data["choices"][0]["message"]["content"]).strip()
+
+
+def _merge_gemini_turns(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+  """Gemini REST는 user/model이 번갈아야 해서, 같은 역할이 연속이면 한 턴으로 합친다."""
+  out: List[Dict[str, str]] = []
+  for m in messages:
+    role = m.get("role", "user")
+    content = str(m.get("content", ""))
+    side = "assistant" if role == "assistant" else "user"
+    if out and out[-1]["_side"] == side:
+      out[-1]["content"] += "\n\n" + content
+    else:
+      out.append({"_side": side, "role": role, "content": content})
+  for o in out:
+    o.pop("_side", None)
+  return out
+
+
+def _call_gemini_chat(api_key: str, model: str, messages: List[Dict[str, str]]) -> str:
+  merged = _merge_gemini_turns(messages)
+  system_text = _system_prompt_for_chat()
+  contents: List[Dict[str, Any]] = []
+  for m in merged:
+    role = m["role"]
+    content = m["content"]
+    if role == "assistant":
+      contents.append({"role": "model", "parts": [{"text": content}]})
+    else:
+      contents.append({"role": "user", "parts": [{"text": content}]})
+  body = json.dumps(
+    {
+      "systemInstruction": {"parts": [{"text": system_text}]},
+      "contents": contents,
+      "generationConfig": {"temperature": 0.6, "maxOutputTokens": 2048},
+    },
+    ensure_ascii=False,
+  ).encode("utf-8")
+  key_q = parse.quote(api_key, safe="")
+  url = (
+    f"https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{model}:generateContent?key={key_q}"
+  )
+  req = request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+  try:
+    with request.urlopen(req, timeout=120) as resp:
+      data = json.loads(resp.read().decode("utf-8"))
+  except error.HTTPError as e:
+    err_body = e.read().decode("utf-8", errors="ignore")[:1200]
+    raise ValueError(f"Gemini HTTP {e.code}: {err_body}") from e
+  candidates = data.get("candidates") or []
+  if not candidates:
+    raise ValueError("Gemini 응답이 비어 있습니다.")
+  parts = candidates[0].get("content", {}).get("parts") or []
+  texts = [p.get("text", "") for p in parts]
+  return "".join(texts).strip()
+
+
+def _try_chat_ai_reply(session_id: str) -> str:
+  openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+  gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+  provider = os.environ.get("CHAT_AI_PROVIDER", "auto").strip().lower()
+  if provider == "none":
+    return ""
+  if provider == "openai" and not openai_key:
+    return ""
+  if provider == "gemini" and not gemini_key:
+    return ""
+  if provider == "auto" and not openai_key and not gemini_key:
+    return ""
+  msgs = _session_messages_for_llm(session_id)
+  if not msgs:
+    return ""
+  try:
+    if provider == "gemini":
+      model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+      return _call_gemini_chat(gemini_key, model, msgs)
+    if provider == "openai":
+      model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+      return _call_openai_chat(openai_key, model, msgs)
+    if openai_key:
+      model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+      return _call_openai_chat(openai_key, model, msgs)
+    if gemini_key:
+      model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+      return _call_gemini_chat(gemini_key, model, msgs)
+  except Exception as e:
+    return f"(AI 응답 실패: {e})"
+  return ""
+
+
+def _cursor_bridge_reply_text(user_text: str) -> str:
+  return (
+    "[웹 대시보드 → Cursor 연동]\n"
+    "이 사이트(Cloud Run)는 Git 저장소 파일을 직접 수정하지 않습니다. "
+    "UI를 바꾸려면 아래 블록 전체를 복사해 **로컬 Cursor 채팅**에 붙여 넣어 에이전트가 코드를 수정하게 하세요.\n\n"
+    "【요청】\n"
+    + user_text
+    + "\n\n【우선 볼 경로】\n"
+    "- web-browser/static/index.html\n"
+    "- web-browser/static/styles.css\n"
+    "- web-browser/static/app.js\n"
+    "- web-browser/server.py"
+  )
+
+
+def _post_cursor_bridge_webhook(session_id: str, user_text: str) -> None:
+  url = str(_site_config().get("cursorBridgeWebhookUrl") or "").strip()
+  if not url:
+    return
+  try:
+    payload = json.dumps(
+      {"sessionId": session_id, "text": user_text, "source": "web-browser-dashboard"},
+      ensure_ascii=False,
+    ).encode("utf-8")
+    req = request.Request(
+      url,
+      data=payload,
+      headers={"Content-Type": "application/json"},
+      method="POST",
+    )
+    with request.urlopen(req, timeout=15) as resp:
+      resp.read()
+  except Exception:
+    pass
 
 
 @app.get("/")
@@ -76,40 +452,246 @@ def get_messages() -> List[Dict[str, Any]]:
   return _read_json(MESSAGES_FILE, [])
 
 
+@app.get("/api/cursor-prompt")
+def cursor_prompt(text: str = Query(default="", alias="text")) -> Dict[str, str]:
+  return {"prompt": _cursor_bridge_reply_text(text)}
+
+
 @app.post("/api/chat/messages")
 def add_message(message: MessageIn) -> Dict[str, Any]:
-  messages = _read_json(MESSAGES_FILE, [])
-  messages.append(message.model_dump())
-  _write_json(MESSAGES_FILE, messages)
+  _append_message(message.sessionId, message.role, message.text)
+  _touch_session(message.sessionId)
+  reply = ""
+  assistant_mode = ""
+  if message.role == "user":
+    mode = (_site_config().get("chatAssistantMode") or "gemini").strip()
+    if mode not in ("gemini", "cursor_bridge"):
+      mode = "gemini"
+    assistant_mode = mode
+    if mode == "cursor_bridge":
+      reply = _cursor_bridge_reply_text(message.text)
+      _post_cursor_bridge_webhook(message.sessionId, message.text)
+      _append_message(message.sessionId, "assistant", reply)
+      _touch_session(message.sessionId)
+    else:
+      reply = _try_chat_ai_reply(message.sessionId)
+      if reply:
+        _append_message(message.sessionId, "assistant", reply)
+        _touch_session(message.sessionId)
+  return {"ok": True, "reply": reply or None, "assistantMode": assistant_mode or None}
 
+
+@app.post("/api/chat/sessions")
+def create_session(body: SessionCreate) -> Dict[str, Any]:
+  sid = f"session-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000, 9999)}"
   sessions = _read_json(SESSIONS_FILE, [])
-  for s in sessions:
-    if s.get("id") == message.sessionId:
-      s["updatedAt"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+  sessions.append(
+    {
+      "id": sid,
+      "title": body.title,
+      "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+  )
   _write_json(SESSIONS_FILE, sessions)
+  return {"ok": True, "session": sessions[-1]}
+
+
+@app.delete("/api/chat/sessions/{session_id}")
+def delete_session(session_id: str) -> Dict[str, Any]:
+  sessions = _read_json(SESSIONS_FILE, [])
+  sessions = [s for s in sessions if s.get("id") != session_id]
+  _write_json(SESSIONS_FILE, sessions)
+  messages = _read_json(MESSAGES_FILE, [])
+  messages = [m for m in messages if m.get("sessionId") != session_id]
+  _write_json(MESSAGES_FILE, messages)
   return {"ok": True}
 
 
+@app.get("/api/rules")
+def get_rules() -> Dict[str, Any]:
+  if not os.path.isfile(CURSOR_RULES_FILE):
+    return {"content": "", "path": CURSOR_RULES_FILE}
+  with open(CURSOR_RULES_FILE, encoding="utf-8") as f:
+    return {"content": f.read(), "path": CURSOR_RULES_FILE}
+
+
+@app.put("/api/rules")
+def put_rules(body: RulesUpdate) -> Dict[str, Any]:
+  parent = os.path.dirname(CURSOR_RULES_FILE)
+  if parent:
+    os.makedirs(parent, exist_ok=True)
+  with open(CURSOR_RULES_FILE, "w", encoding="utf-8") as f:
+    f.write(body.content)
+  return {"ok": True, "path": CURSOR_RULES_FILE}
+
+
+@app.get("/api/site-config")
+def get_site_config() -> Dict[str, Any]:
+  cfg = _site_config()
+  defaults = {
+    "siteTitle": "원격 개발 대시보드",
+    "activeProjectName": "",
+    "n8nCommandWebhookUrl": "",
+    "n8nStatusUrl": "",
+    "cloudRunHealthUrl": "",
+    "unityWorkerHealthUrl": "",
+    "chatAssistantMode": "gemini",
+    "cursorBridgeWebhookUrl": "",
+  }
+  merged = {**defaults, **cfg}
+  return merged
+
+
+@app.put("/api/site-config")
+def put_site_config(body: SiteConfigIn) -> Dict[str, Any]:
+  mode = (body.chatAssistantMode or "gemini").strip()
+  if mode not in ("gemini", "cursor_bridge"):
+    mode = "gemini"
+  data = {
+    "siteTitle": body.siteTitle,
+    "activeProjectName": body.activeProjectName,
+    "n8nCommandWebhookUrl": body.n8nCommandWebhookUrl,
+    "n8nStatusUrl": body.n8nStatusUrl,
+    "cloudRunHealthUrl": body.cloudRunHealthUrl,
+    "unityWorkerHealthUrl": body.unityWorkerHealthUrl,
+    "chatAssistantMode": mode,
+    "cursorBridgeWebhookUrl": body.cursorBridgeWebhookUrl,
+  }
+  _write_json(SITE_CONFIG_FILE, data)
+  return {"ok": True, "config": data}
+
+
 @app.get("/api/status")
-def get_status() -> Dict[str, Any]:
+def get_status(
+  include_services: bool = Query(default=False),
+  include_n8n: bool = Query(default=False),
+  session_id: str = Query(default="", alias="sessionId"),
+) -> Dict[str, Any]:
   status = _read_json(STATUS_FILE, {})
+  cfg_proj = _effective_setting("activeProjectName", "UNITY_ACTIVE_PROJECT_NAME", "")
+  status["activeProject"] = cfg_proj if cfg_proj else status.get("activeProject", "-")
+  queue_items = _read_json(QUEUE_FILE, [])
+  queued = len([q for q in queue_items if q.get("status") == "queued"])
+  running = len([q for q in queue_items if q.get("status") == "sent"])
+  status["queue"] = {"queued": queued, "sent": running, "total": len(queue_items)}
 
-  cloud_run_health_url = os.environ.get("CLOUD_RUN_HEALTH_URL", "")
-  unity_worker_health_url = os.environ.get("UNITY_WORKER_HEALTH_URL", "")
-  if cloud_run_health_url:
-    res = _get_url_json(cloud_run_health_url)
-    status["cloudRun"] = f"Cloud Run: {'healthy' if res['ok'] else 'down'}"
-  if unity_worker_health_url:
-    res = _get_url_json(unity_worker_health_url)
-    status["unityWorker"] = f"Unity Worker: {'healthy' if res['ok'] else 'down'}"
+  if include_services:
+    cloud_run_health_url = _effective_setting("cloudRunHealthUrl", "CLOUD_RUN_HEALTH_URL", "")
+    unity_worker_health_url = _effective_setting("unityWorkerHealthUrl", "UNITY_WORKER_HEALTH_URL", "")
+    if cloud_run_health_url:
+      res = _get_url_json(cloud_run_health_url)
+      status["cloudRun"] = f"Cloud Run: {'healthy' if res['ok'] else 'down'}"
+    if unity_worker_health_url:
+      res = _get_url_json(unity_worker_health_url)
+      status["unityWorker"] = f"Unity Worker: {'healthy' if res['ok'] else 'down'}"
 
-  n8n_status_url = os.environ.get("N8N_STATUS_URL", "")
-  if n8n_status_url:
-    res = _get_url_json(n8n_status_url)
-    status.setdefault("n8n", {})
-    status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
-    status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+  if include_n8n:
+    n8n_status_url = _effective_setting("n8nStatusUrl", "N8N_STATUS_URL", "")
+    if n8n_status_url:
+      res = _get_url_json(n8n_status_url)
+      status.setdefault("n8n", {})
+      status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
+      status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+  status["progress"] = _compute_progress(session_id, queue_items, status)
 
   if not status:
     raise HTTPException(status_code=500, detail="status data not found")
   return status
+
+
+@app.get("/api/queue")
+def get_queue() -> List[Dict[str, Any]]:
+  return _read_json(QUEUE_FILE, [])
+
+
+@app.post("/api/queue/stack")
+def stack_queue(body: StackIn) -> Dict[str, Any]:
+  commands = [line.strip() for line in body.rawText.splitlines() if line.strip()]
+  if not commands:
+    raise HTTPException(status_code=400, detail="명령이 비어 있습니다.")
+  queue_items = _read_json(QUEUE_FILE, [])
+  now = datetime.now().strftime("%Y%m%d%H%M%S")
+  for idx, cmd in enumerate(commands):
+    queue_items.append(
+      {
+        "id": f"q-{now}-{idx}",
+        "sessionId": body.sessionId,
+        "command": cmd,
+        "status": "queued",
+        "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+      }
+    )
+  _write_json(QUEUE_FILE, queue_items)
+  _append_message(body.sessionId, "system", f"명령 {len(commands)}개를 스택에 추가했습니다.")
+  _touch_session(body.sessionId)
+  return {"ok": True, "added": len(commands)}
+
+
+@app.post("/api/queue/dispatch-next")
+def dispatch_next() -> Dict[str, Any]:
+  webhook_url = _effective_setting("n8nCommandWebhookUrl", "N8N_COMMAND_WEBHOOK_URL", "")
+  if not webhook_url:
+    raise HTTPException(
+      status_code=400,
+      detail="n8n 명령 웹훅 URL이 필요합니다. 사이트 설정 또는 N8N_COMMAND_WEBHOOK_URL 환경 변수를 설정하세요.",
+    )
+
+  queue_items = _read_json(QUEUE_FILE, [])
+  target = next((q for q in queue_items if q.get("status") == "queued"), None)
+  if not target:
+    return {"ok": True, "message": "대기중인 명령이 없습니다."}
+
+  payload = json.dumps(
+    {
+      "queueId": target["id"],
+      "sessionId": target["sessionId"],
+      "command": target["command"],
+    }
+  ).encode("utf-8")
+  req = request.Request(
+    url=webhook_url,
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+  )
+  try:
+    with request.urlopen(req, timeout=20) as resp:
+      _ = resp.read()
+    target["status"] = "sent"
+    target["sentAt"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _append_message(target["sessionId"], "system", f"n8n로 명령 전송: {target['command']}")
+  except Exception as e:
+    target["status"] = "failed"
+    target["error"] = str(e)
+    _append_message(target["sessionId"], "system", f"전송 실패: {target['command']}")
+  _write_json(QUEUE_FILE, queue_items)
+  _touch_session(target["sessionId"])
+  return {"ok": True, "queueId": target["id"], "status": target["status"]}
+
+
+@app.post("/api/queue/ack")
+def ack_queue(body: AckIn) -> Dict[str, Any]:
+  queue_items = _read_json(QUEUE_FILE, [])
+  target = next((q for q in queue_items if q.get("id") == body.queueId), None)
+  if not target:
+    raise HTTPException(status_code=404, detail="queue item not found")
+  target["status"] = body.status
+  target["ackAt"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  if body.message:
+    target["resultMessage"] = body.message
+  if body.screenshotUrl:
+    target["screenshotUrl"] = body.screenshotUrl
+
+  _append_message(target["sessionId"], "system", f"[{body.status}] {target['command']} {body.message}".strip())
+  _touch_session(target["sessionId"])
+  _write_json(QUEUE_FILE, queue_items)
+
+  status = _read_json(STATUS_FILE, {})
+  status.setdefault("n8n", {})
+  status["n8n"]["lastResult"] = body.status
+  status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+  if body.screenshotUrl:
+    status["latestScreenshotUrl"] = body.screenshotUrl
+  _write_json(STATUS_FILE, status)
+  return {"ok": True}

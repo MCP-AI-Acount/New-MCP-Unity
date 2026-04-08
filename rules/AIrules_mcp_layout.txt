@@ -1,5 +1,5 @@
 # NewMCP mcp.json 배치 규칙 (결론)
 
-- 1_Main/mcp.json : 기본 사용 MCP 서버 + Cloud Run 연결 설정
-- 2_option/mcp.json : 프로젝트 특화/선택 서버 (현재 unity6)
+- **`~/.cursor/mcp.json`** (macOS): Cursor가 읽는 MCP 서버 설정 **단일 본체** (전역·범용)
+- 저장소 `1_Main/mcp.json` 은 사용하지 않음 (삭제됨)
 - Option/ : 보조 설명·기능 요약 텍스트만 보관

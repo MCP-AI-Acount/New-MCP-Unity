@@ -1,6 +1,8 @@
+# n8n (전역): npm install -g n8n — 상세 rules/api_keys_n8n.md
 sleepwatcher (macOS sleep/wake hook)
 fastapi
 uvicorn[standard]
+# web-browser AI 답변: 추가 패키지 없음(표준 urllib)
 google-api-python-client
 google-auth
 google-auth-oauthlib

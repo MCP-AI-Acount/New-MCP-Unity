@@ -6,7 +6,7 @@ BRANCH_NAME="${BRANCH_NAME:-master}"
 IDLE_THRESHOLD_SECONDS="${IDLE_THRESHOLD_SECONDS:-300}"
 COMMIT_MESSAGE_PREFIX="${COMMIT_MESSAGE_PREFIX:-auto: idle checkpoint}"
 AUTO_PUSH="${AUTO_PUSH:-0}"
-ALLOW_PATHS_REGEX="${ALLOW_PATHS_REGEX:-^(MCP_Server/|collaboration/|common/|extensions/|rules/|EXE/|1_Main/|2_Option/|Option/|\\.gitignore$)}"
+ALLOW_PATHS_REGEX="${ALLOW_PATHS_REGEX:-^(MCP_Server/|collaboration/|common/|extensions/|rules/|EXE/|2_Option/|Option/|\\.gitignore$)}"
 
 cd "$REPO_DIR"
 

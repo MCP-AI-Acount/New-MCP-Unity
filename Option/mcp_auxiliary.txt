@@ -1,4 +1,4 @@
-# Option — 보조 설명·기능 정리 (실제 MCP 연결은 1_Main/mcp.json 만 사용)
+# Option — 보조 설명·기능 정리 (실제 MCP 연결은 ~/.cursor/mcp.json 단일 사용)
 
 [범용·보조 성격 MCP]
 Context7: 라이브러리·프레임워크 문서 검색 보조
@@ -16,4 +16,5 @@ notion-calendar: 노션 DB 캘린더 이벤트 CRUD
 google-calendar: Google Calendar 이벤트·캘린더 목록 (API 키 또는 OAuth)
 google-sheets: 시트 읽기/행 추가, 스크린샷 OCR+템플릿 후 저장 (OAuth token_sheets.json, Tesseract)
 apple-calendar: CalDAV 기반 애플 캘린더
-unity6: 2_option/mcp.json 으로 분리 (유니티 프로젝트 전용)
+unity6: ~/.cursor/mcp.json 에 포함 (유니티 프로젝트 경로는 -projectPath 로 조정)
+google-cloud-run-mcp: ~/.cursor/mcp.json — Cloud Run MCP URL·Bearer 를 배포 값으로 교체
