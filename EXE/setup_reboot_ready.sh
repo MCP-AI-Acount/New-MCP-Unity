@@ -6,6 +6,8 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 LOCAL_BIN_DIR="${HOME}/.local/bin"
 OCG_BIN="${LOCAL_BIN_DIR}/ocg"
 BASHRC_FILE="${HOME}/.bashrc"
+BASH_PROFILE_FILE="${HOME}/.bash_profile"
+PROFILE_FILE="${HOME}/.profile"
 SNIPPET_BEGIN="# >>> new-mcp-ocg >>>"
 SNIPPET_END="# <<< new-mcp-ocg <<<"
 
@@ -19,16 +21,23 @@ exec bash "\$REPO_ROOT/EXE/one_command_git_flow.sh" "\$@"
 EOF
 chmod +x "$OCG_BIN"
 
-touch "$BASHRC_FILE"
-if ! rg -F "$SNIPPET_BEGIN" "$BASHRC_FILE" >/dev/null 2>&1; then
-  cat >> "$BASHRC_FILE" <<'EOF'
+append_path_snippet_if_missing() {
+  local target_file="$1"
+  touch "$target_file"
+  if ! rg -F "$SNIPPET_BEGIN" "$target_file" >/dev/null 2>&1; then
+    cat >> "$target_file" <<'EOF'
 # >>> new-mcp-ocg >>>
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 # <<< new-mcp-ocg <<<
 EOF
-fi
+  fi
+}
+
+append_path_snippet_if_missing "$BASHRC_FILE"
+append_path_snippet_if_missing "$BASH_PROFILE_FILE"
+append_path_snippet_if_missing "$PROFILE_FILE"
 
 git config --global --add safe.directory "$REPO_ROOT" >/dev/null 2>&1 || true
 

@@ -1,0 +1,29 @@
+# 재부팅 후 one-command git 기본 규칙 (결론)
+
+- 목적: VM/Cloud 재부팅 이후에도 사용자 명령 1회로 add/commit/push까지 즉시 수행.
+- 기본 실행 명령: `ocg` (커밋 메시지 자동 생성 후 push)
+- 메시지 지정: `ocg <메시지>`
+
+## 필수 준비(최초 1회)
+
+1) 저장소 루트에서 아래 실행:
+   - `bash EXE/setup_reboot_ready.sh`
+2) 이 스크립트가 수행하는 작업:
+   - `~/.local/bin/ocg` 생성
+   - 로그인 셸 환경 파일(`~/.profile`, `~/.bash_profile`, `~/.bashrc`)에 PATH 보장
+   - 저장소를 `git safe.directory`에 등록
+
+## 재부팅 후 사용 절차
+
+1) 셸 접속
+2) 저장소로 이동: `cd /workspace`
+3) 즉시 실행:
+   - 자동 메시지: `ocg`
+   - 지정 메시지: `ocg chore: ios retry push`
+
+## 보안 규칙
+
+- API 키/토큰은 git에 커밋하지 않음.
+- 시크릿 파일은 로컬 안전 경로를 사용:
+  - `/home/ubuntu/.config/agent-secrets.env`
+  - (임시) `/workspace/temp/agent-secrets.env`
