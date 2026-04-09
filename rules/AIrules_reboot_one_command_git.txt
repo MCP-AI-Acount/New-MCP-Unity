@@ -1,6 +1,6 @@
 # 재부팅 후 one-command git 기본 규칙 (결론)
 
-- 목적: VM/Cloud 재부팅 이후에도 사용자 명령 1회로 add/commit/push까지 즉시 수행.
+- 목적: VM/Cloud 재부팅 이후에도 사용자가 별도 준비 작업 없이 즉시 git add/commit/push 실행.
 - 기본 실행 명령: `ocg` (커밋 메시지 자동 생성 후 push)
 - 메시지 지정: `ocg <메시지>`
 
@@ -11,15 +11,16 @@
 2) 이 스크립트가 수행하는 작업:
    - `~/.local/bin/ocg` 생성
    - 로그인 셸 환경 파일(`~/.profile`, `~/.bash_profile`, `~/.bashrc`)에 PATH 보장
+   - 셸 시작 시 자동 실행 훅 `~/.config/newmcp/reboot_init.sh` 생성
+   - crontab `@reboot` 등록(부팅 직후 자동 재적용)
    - 저장소를 `git safe.directory`에 등록
 
-## 재부팅 후 사용 절차
+## 재부팅 후 동작 규칙
 
-1) 셸 접속
-2) 저장소로 이동: `cd /workspace`
-3) 즉시 실행:
-   - 자동 메시지: `ocg`
-   - 지정 메시지: `ocg chore: ios retry push`
+- 사용자가 별도 준비 명령을 치지 않아도 자동 초기화가 동작해야 함.
+- 셸 접속 후 바로 아래만 수행하면 됨:
+  - `ocg`
+  - `ocg chore: ios retry push`
 
 ## 보안 규칙
 
