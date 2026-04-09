@@ -18,7 +18,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from collaboration.remote_task_runner import run_remote_task
-from collaboration.unity_remote_orchestrator import dispatch_unity_task
+from collaboration.unity_remote_orchestrator import dispatch_unity_task, read_unity_worker_file
 
 try:
     from google.cloud import tasks_v2
@@ -52,6 +52,15 @@ class UnityTaskRequest(BaseModel):
     n8n_webhook_url: str = ""
     run_async: bool = True
     delay_seconds: int = 0
+
+
+class UnityFileReadRequest(BaseModel):
+    request_id: str = ""
+    file_path: str
+    project_name: str = ""
+    project_path: str = ""
+    unity_worker_url: str = ""
+    unity_worker_bearer_token: str = ""
 
 
 def _check_bearer(auth_header: str) -> None:
@@ -215,6 +224,26 @@ def run_unity_task(body: UnityTaskRequest, req: Request, authorization: str = He
 
     payload["run_async"] = False
     return dispatch_unity_task(payload)
+
+
+@app.post("/v1/unity/files/read")
+def read_unity_file(body: UnityFileReadRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    payload = body.model_dump()
+    result = read_unity_worker_file(payload)
+    if not result.get("ok"):
+        return result
+
+    file_bytes = result.get("file_bytes", b"")
+    import base64
+
+    return {
+        "ok": True,
+        "request_id": body.request_id,
+        "file_path": result.get("worker_result", {}).get("body", {}).get("result", {}).get("file_path", ""),
+        "file_bytes_base64": base64.b64encode(file_bytes).decode("utf-8"),
+        "size_bytes": len(file_bytes),
+    }
 
 
 @app.post("/internal/tasks/execute")

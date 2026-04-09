@@ -5,6 +5,7 @@ GCP VM 상에서 실행하는 Unity Worker HTTPS 게이트웨이
 
 import os
 import subprocess
+import base64
 from typing import Any, Dict
 
 from fastapi import FastAPI, Header, HTTPException
@@ -27,6 +28,13 @@ class UnityProjectRequest(BaseModel):
     project_name: str
     project_path: str = ""
     set_active: bool = True
+
+
+class UnityFileReadRequest(BaseModel):
+    request_id: str = ""
+    file_path: str
+    project_name: str = ""
+    project_path: str = ""
 
 
 def _check_bearer(auth_header: str) -> None:
@@ -110,6 +118,32 @@ def _create_unity_project(project_name: str, project_path: str = "") -> Dict[str
     }
 
 
+def _read_file_base64(file_path: str, project_name: str = "", project_path: str = "") -> Dict[str, Any]:
+    resolved_project_path = resolve_project_path(project_name=project_name, project_path=project_path)
+    if not resolved_project_path:
+        resolved_project_path = os.environ.get("UNITY_PROJECT_PATH", "")
+
+    if os.path.isabs(file_path):
+        resolved_file_path = file_path
+    else:
+        if not resolved_project_path:
+            return {"ok": False, "error": "상대 경로 사용 시 UNITY_PROJECT_PATH 또는 project_name/project_path가 필요합니다."}
+        resolved_file_path = os.path.join(resolved_project_path, file_path)
+
+    if not os.path.isfile(resolved_file_path):
+        return {"ok": False, "error": f"파일을 찾을 수 없습니다: {resolved_file_path}"}
+
+    with open(resolved_file_path, "rb") as f:
+        raw = f.read()
+
+    return {
+        "ok": True,
+        "file_path": resolved_file_path,
+        "size_bytes": len(raw),
+        "content_base64": base64.b64encode(raw).decode("utf-8"),
+    }
+
+
 @app.get("/healthz")
 def healthz() -> Dict[str, Any]:
     return {"ok": True, "service": "unity-worker-gateway"}
@@ -168,3 +202,18 @@ def set_active_project(body: UnityProjectRequest, authorization: str = Header(de
         set_active=True,
     )
     return {"ok": True, "registry": registry}
+
+
+@app.post("/v1/files/read")
+def read_file(body: UnityFileReadRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    result = _read_file_base64(
+        file_path=body.file_path,
+        project_name=body.project_name,
+        project_path=body.project_path,
+    )
+    return {
+        "ok": bool(result.get("ok")),
+        "request_id": body.request_id,
+        "result": result,
+    }
