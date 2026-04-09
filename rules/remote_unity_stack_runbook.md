@@ -14,6 +14,17 @@ chmod +x EXE/setup_remote_unity_stack.sh
 PROJECT_ID=<your-project-id> REGION=asia-northeast3 ZONE=asia-northeast3-a EXE/setup_remote_unity_stack.sh
 ```
 
+Cloud Run 최소 배포(게이트웨이만)만 따로 수행하려면:
+
+```bash
+bash EXE/deploy_cloud_run_gateway_minimal.sh
+```
+
+- 이 스크립트는 임시 빌드 디렉토리를 만들고
+- `MCP_Server/`, `collaboration/`, `common/`, `requirements-cloudrun.txt`만 포함해
+- Cloud Run에 최소 소스만 배포합니다.
+- Unity 프로젝트(씬/에셋)는 Git 저장소/VM 경로에 유지하며 Cloud Run에는 올리지 않습니다.
+
 ## 2. VM에 Unity Worker 올리기
 
 1) VM 접속 후 Python 설치

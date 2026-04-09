@@ -13,6 +13,7 @@ MACHINE_TYPE="${MACHINE_TYPE:-e2-standard-4}"
 CLOUD_TASKS_QUEUE_REMOTE="${CLOUD_TASKS_QUEUE_REMOTE:-remote-mcp-tasks}"
 CLOUD_TASKS_QUEUE_UNITY="${CLOUD_TASKS_QUEUE_UNITY:-remote-mcp-unity-tasks}"
 CLOUD_TASKS_INTERNAL_TOKEN="${CLOUD_TASKS_INTERNAL_TOKEN:-}"
+EXTRA_ENV_VARS="${EXTRA_ENV_VARS:-}"
 
 if [[ -z "$PROJECT_ID" ]]; then
   echo "PROJECT_ID 환경변수가 필요합니다."
@@ -46,16 +47,15 @@ PY
 )"
 fi
 
-gcloud run deploy "$SERVICE_NAME" \
-  --source . \
-  --region "$REGION" \
-  --allow-unauthenticated \
-  --min-instances 0 \
-  --max-instances 1 \
-  --cpu 1 \
-  --memory 512Mi \
-  --timeout 300 \
-  --set-env-vars "CLOUD_TASKS_LOCATION=$REGION,CLOUD_TASKS_QUEUE_REMOTE=$CLOUD_TASKS_QUEUE_REMOTE,CLOUD_TASKS_QUEUE_UNITY=$CLOUD_TASKS_QUEUE_UNITY,CLOUD_TASKS_INTERNAL_TOKEN=$CLOUD_TASKS_INTERNAL_TOKEN"
+PROJECT_ID="$PROJECT_ID" \
+REGION="$REGION" \
+SERVICE_NAME="$SERVICE_NAME" \
+REPO_NAME="$REPO_NAME" \
+CLOUD_TASKS_QUEUE_REMOTE="$CLOUD_TASKS_QUEUE_REMOTE" \
+CLOUD_TASKS_QUEUE_UNITY="$CLOUD_TASKS_QUEUE_UNITY" \
+CLOUD_TASKS_INTERNAL_TOKEN="$CLOUD_TASKS_INTERNAL_TOKEN" \
+EXTRA_ENV_VARS="$EXTRA_ENV_VARS" \
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/deploy_cloud_run_gateway_minimal.sh"
 
 if ! gcloud compute instances describe "$VM_NAME" --zone "$ZONE" >/dev/null 2>&1; then
   gcloud compute instances create "$VM_NAME" \
