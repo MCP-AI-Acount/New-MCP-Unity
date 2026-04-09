@@ -58,6 +58,31 @@ curl -X POST "https://<cloud-run-url>/v1/unity/tasks/run" \
   }'
 ```
 
+비동기(기본값, 휴대폰 대기모드 대비):
+
+```bash
+curl -X POST "https://<cloud-run-url>/v1/unity/tasks/run" \
+  -H "Authorization: Bearer <REMOTE_API_BEARER_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_id":"unity-req-2",
+    "task_type":"set_canvas_graph_horizontal_green",
+    "task_payload":{
+      "scene":"SampleScene",
+      "canvasName":"Canvas",
+      "graphName":"Graph",
+      "colorHex":"#00FF00"
+    },
+    "project_name":"ReportMaker",
+    "unity_worker_url":"https://<vm-public-ip>:8443",
+    "n8n_webhook_url":"https://<n8n-webhook>",
+    "run_async": true
+  }'
+```
+
+응답에는 `accepted=true` 와 `cloud_task_name` 이 반환되며, 작업 결과는 `n8n_webhook_url`로 수신합니다.  
+Cloud Tasks 큐에 들어간 작업은 클라이언트(아이폰) 연결이 끊겨도 백그라운드에서 계속 진행됩니다.
+
 ## 4. 무료티어/비용 전략
 
 - Cloud Run: `min-instances=0`, `max-instances=1`

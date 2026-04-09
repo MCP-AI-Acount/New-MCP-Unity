@@ -10,6 +10,9 @@ REPO_NAME="${REPO_NAME:-remote-mcp-repo}"
 VM_NAME="${VM_NAME:-unity-headless-worker}"
 ZONE="${ZONE:-asia-northeast3-a}"
 MACHINE_TYPE="${MACHINE_TYPE:-e2-standard-4}"
+CLOUD_TASKS_QUEUE_REMOTE="${CLOUD_TASKS_QUEUE_REMOTE:-remote-mcp-tasks}"
+CLOUD_TASKS_QUEUE_UNITY="${CLOUD_TASKS_QUEUE_UNITY:-remote-mcp-unity-tasks}"
+CLOUD_TASKS_INTERNAL_TOKEN="${CLOUD_TASKS_INTERNAL_TOKEN:-}"
 
 if [[ -z "$PROJECT_ID" ]]; then
   echo "PROJECT_ID 환경변수가 필요합니다."
@@ -17,12 +20,30 @@ if [[ -z "$PROJECT_ID" ]]; then
 fi
 
 gcloud config set project "$PROJECT_ID"
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com compute.googleapis.com
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com compute.googleapis.com cloudtasks.googleapis.com
 
 if ! gcloud artifacts repositories describe "$REPO_NAME" --location "$REGION" >/dev/null 2>&1; then
   gcloud artifacts repositories create "$REPO_NAME" \
     --repository-format docker \
     --location "$REGION"
+fi
+
+if ! gcloud tasks queues describe "$CLOUD_TASKS_QUEUE_REMOTE" --location "$REGION" >/dev/null 2>&1; then
+  gcloud tasks queues create "$CLOUD_TASKS_QUEUE_REMOTE" \
+    --location "$REGION"
+fi
+
+if ! gcloud tasks queues describe "$CLOUD_TASKS_QUEUE_UNITY" --location "$REGION" >/dev/null 2>&1; then
+  gcloud tasks queues create "$CLOUD_TASKS_QUEUE_UNITY" \
+    --location "$REGION"
+fi
+
+if [[ -z "$CLOUD_TASKS_INTERNAL_TOKEN" ]]; then
+  CLOUD_TASKS_INTERNAL_TOKEN="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+)"
 fi
 
 gcloud run deploy "$SERVICE_NAME" \
@@ -33,7 +54,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances 1 \
   --cpu 1 \
   --memory 512Mi \
-  --timeout 300
+  --timeout 300 \
+  --set-env-vars "CLOUD_TASKS_LOCATION=$REGION,CLOUD_TASKS_QUEUE_REMOTE=$CLOUD_TASKS_QUEUE_REMOTE,CLOUD_TASKS_QUEUE_UNITY=$CLOUD_TASKS_QUEUE_UNITY,CLOUD_TASKS_INTERNAL_TOKEN=$CLOUD_TASKS_INTERNAL_TOKEN"
 
 if ! gcloud compute instances describe "$VM_NAME" --zone "$ZONE" >/dev/null 2>&1; then
   gcloud compute instances create "$VM_NAME" \
