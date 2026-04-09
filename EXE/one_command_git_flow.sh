@@ -2,12 +2,17 @@
 set -euo pipefail
 
 # command: git 변경사항 add/commit/push 한 번에 실행
-REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-COMMIT_MSG="${1:-}"
+SCRIPT_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if git -C "${REPO_ROOT:-$PWD}" rev-parse --show-toplevel >/dev/null 2>&1; then
+  REPO_ROOT="$(git -C "${REPO_ROOT:-$PWD}" rev-parse --show-toplevel)"
+else
+  REPO_ROOT="${REPO_ROOT:-$SCRIPT_REPO_ROOT}"
+fi
 
-if [[ -z "$COMMIT_MSG" ]]; then
-  echo "usage: bash \"$REPO_ROOT/EXE/one_command_git_flow.sh\" \"<commit message>\"" >&2
-  exit 1
+if [[ "$#" -gt 0 ]]; then
+  COMMIT_MSG="$*"
+else
+  COMMIT_MSG="chore: sync $(date '+%Y-%m-%d %H:%M:%S')"
 fi
 
 cd "$REPO_ROOT"
