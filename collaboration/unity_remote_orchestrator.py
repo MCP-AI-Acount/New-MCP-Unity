@@ -78,8 +78,13 @@ def dispatch_unity_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         },
         webhook_url=payload.get("n8n_webhook_url", ""),
     )
+    worker_ok = bool(worker_result.get("ok"))
+    worker_body = worker_result.get("body", {})
+    unity_result = worker_body.get("result", {}) if isinstance(worker_body, dict) else {}
+    unity_returncode = int(unity_result.get("returncode", 1) or 1)
+    unity_ok = worker_ok and unity_returncode == 0 and bool(unity_result.get("ok", False))
     return {
-        "ok": bool(worker_result.get("ok")),
+        "ok": unity_ok,
         "worker_result": worker_result,
         "n8n_log_result": log_result,
     }

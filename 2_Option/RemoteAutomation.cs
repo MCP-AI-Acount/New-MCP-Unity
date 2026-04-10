@@ -42,11 +42,13 @@ public static class RemoteAutomation
         if (string.IsNullOrWhiteSpace(taskType))
         {
             Debug.LogError("[RemoteAutomation] --taskType is required");
+            Environment.Exit(1);
             return;
         }
         if (string.IsNullOrWhiteSpace(taskPayloadJson))
         {
             Debug.LogError("[RemoteAutomation] --taskPayload is required");
+            Environment.Exit(1);
             return;
         }
 
@@ -58,25 +60,35 @@ public static class RemoteAutomation
         catch (Exception e)
         {
             Debug.LogError("[RemoteAutomation] task payload parse error: " + e.Message);
+            Environment.Exit(1);
             return;
         }
 
         if (taskType == "play_and_capture")
         {
-            RunPlayAndCapture(payload);
+            bool ok = RunPlayAndCapture(payload);
+            if (!ok)
+            {
+                Environment.Exit(1);
+            }
             return;
         }
 
         if (taskType == "set_canvas_graph_horizontal_green" || taskType == "ui_set_graph_horizontal_green")
         {
-            RunSetCanvasGraphHorizontalGreen(payload);
+            bool ok = RunSetCanvasGraphHorizontalGreen(payload);
+            if (!ok)
+            {
+                Environment.Exit(1);
+            }
             return;
         }
 
         Debug.LogWarning("[RemoteAutomation] unsupported taskType: " + taskType);
+        Environment.Exit(1);
     }
 
-    private static void RunPlayAndCapture(TaskPayload payload)
+    private static bool RunPlayAndCapture(TaskPayload payload)
     {
         string sceneName = string.IsNullOrWhiteSpace(payload.sceneName) ? SceneManager.GetActiveScene().name : payload.sceneName;
         string screenshotPath = string.IsNullOrWhiteSpace(payload.screenshotPath) ? "/tmp/unity-play-capture.png" : payload.screenshotPath;
@@ -100,6 +112,7 @@ public static class RemoteAutomation
             {
                 SendWebhook(payload.webhookUrl, payload.requestId, true, "play_and_capture done", screenshotPath);
             }
+            return true;
         }
         catch (Exception e)
         {
@@ -108,6 +121,7 @@ public static class RemoteAutomation
             {
                 SendWebhook(payload.webhookUrl, payload.requestId, false, e.Message, screenshotPath);
             }
+            return false;
         }
     }
 
@@ -136,7 +150,7 @@ public static class RemoteAutomation
         }
     }
 
-    private static void RunSetCanvasGraphHorizontalGreen(TaskPayload payload)
+    private static bool RunSetCanvasGraphHorizontalGreen(TaskPayload payload)
     {
         string sceneName = string.IsNullOrWhiteSpace(payload.sceneName) ? payload.scene : payload.sceneName;
         string canvasName = string.IsNullOrWhiteSpace(payload.canvasName) ? "Canvas" : payload.canvasName;
@@ -188,6 +202,7 @@ public static class RemoteAutomation
             {
                 SendWebhook(payload.webhookUrl, payload.requestId, true, "set_canvas_graph_horizontal_green done", "");
             }
+            return true;
         }
         catch (Exception e)
         {
@@ -196,6 +211,7 @@ public static class RemoteAutomation
             {
                 SendWebhook(payload.webhookUrl, payload.requestId, false, e.Message, "");
             }
+            return false;
         }
     }
 

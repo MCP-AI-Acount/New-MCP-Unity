@@ -6,6 +6,7 @@ GCP VM 상에서 실행하는 Unity Worker HTTPS 게이트웨이
 import os
 import subprocess
 import base64
+import json
 from typing import Any, Dict
 
 from fastapi import FastAPI, Header, HTTPException
@@ -64,7 +65,7 @@ def _run_unity_batch(
     if not resolved_project_path:
         return {"ok": False, "error": "UNITY_PROJECT_PATH 환경변수 또는 project_name/project_path가 필요합니다."}
 
-    task_json = str(task_payload).replace("'", '"')
+    task_json = json.dumps(task_payload, ensure_ascii=False)
     cmd = [
         unity_path,
         "-batchmode",
@@ -80,12 +81,38 @@ def _run_unity_batch(
         log_path,
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    log_excerpt = ""
+    if os.path.isfile(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                log_excerpt = f.read()[-12000:]
+        except OSError:
+            log_excerpt = ""
+
+    remote_error = ""
+    lower_log = log_excerpt.lower()
+    error_markers = [
+        "[remoteautomation] --tasktype is required",
+        "[remoteautomation] --taskpayload is required",
+        "[remoteautomation] task payload parse error",
+        "[remoteautomation] unsupported tasktype",
+        "[remoteautomation] play_and_capture error",
+        "[remoteautomation] set_canvas_graph_horizontal_green error",
+    ]
+    for marker in error_markers:
+        if marker in lower_log:
+            remote_error = marker
+            break
+
+    ok = proc.returncode == 0 and not remote_error
     return {
-        "ok": proc.returncode == 0,
+        "ok": ok,
         "returncode": proc.returncode,
         "stdout": proc.stdout[-3000:],
         "stderr": proc.stderr[-3000:],
         "log_path": log_path,
+        "log_excerpt": log_excerpt,
+        "remote_error": remote_error,
         "project_path": resolved_project_path,
     }
 

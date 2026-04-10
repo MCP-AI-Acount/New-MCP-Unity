@@ -85,11 +85,11 @@ body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-
 .pipeline-meta { margin-top: 8px; font-size: .74rem; color: var(--muted); }
 .pipeline-arrow { stroke: #6d8dff; stroke-width: 2.2; marker-end: url(#arrowHead); opacity: .85; }
 .pipeline-arrow-head { fill: #6d8dff; }
-.pipeline-stage { transition: fill .2s ease, stroke .2s ease; }
-.pipeline-stage.stage-pending { fill: rgba(255,255,255,0.04); stroke: var(--border); }
-.pipeline-stage.stage-running { fill: rgba(255, 209, 102, 0.20); stroke: #ffd166; }
-.pipeline-stage.stage-success { fill: rgba(47, 207, 143, 0.20); stroke: #2fcf8f; }
-.pipeline-stage.stage-failed { fill: rgba(255, 107, 107, 0.20); stroke: #ff6b6b; }
+.pipeline-node.pipeline-stage { transition: fill .2s ease, stroke .2s ease; }
+.pipeline-node.pipeline-stage.stage-pending { fill: rgba(255,255,255,0.04); stroke: var(--border); }
+.pipeline-node.pipeline-stage.stage-running { fill: rgba(255, 209, 102, 0.20); stroke: #ffd166; }
+.pipeline-node.pipeline-stage.stage-success { fill: rgba(47, 207, 143, 0.20); stroke: #2fcf8f; }
+.pipeline-node.pipeline-stage.stage-failed { fill: rgba(255, 107, 107, 0.20); stroke: #ff6b6b; }
 .status-progress-wrap { margin-top: 0; padding-top: 6px; border-top: 1px solid var(--border); flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .status-progress-wrap.hidden { display: none; }
 .status-progress-heading { margin: 0; font-size: .78rem; color: var(--muted); font-weight: 600; }

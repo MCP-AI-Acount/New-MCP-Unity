@@ -3,6 +3,7 @@ import json
 import os
 import random
 import subprocess
+import threading
 from datetime import datetime
 from typing import Any, Dict, List
 from urllib import error, parse, request
@@ -51,17 +52,98 @@ CURSOR_RULES_FILE = os.environ.get(
 WEB_CURSOR_RULES_FILE = os.path.join(DATA_DIR, "cursor_top_rules.md")
 
 
+class _DashboardStore:
+  def __init__(self) -> None:
+    self._lock = threading.Lock()
+    self._backend = "file"
+    self._firestore_client = None
+    self._collection = os.environ.get("WEB_STORE_COLLECTION", "web_dashboard_state")
+    mode = (os.environ.get("WEB_STORE_MODE", "auto") or "auto").strip().lower()
+    if mode == "file":
+      return
+    try:
+      from google.cloud import firestore  # type: ignore
+
+      project_id = (
+        os.environ.get("GOOGLE_CLOUD_PROJECT")
+        or os.environ.get("GCP_PROJECT")
+        or os.environ.get("PROJECT_ID")
+        or ""
+      )
+      self._firestore_client = firestore.Client(project=project_id or None)
+      self._backend = "firestore"
+    except Exception:
+      self._firestore_client = None
+      self._backend = "file"
+
+  @property
+  def backend(self) -> str:
+    return self._backend
+
+  @staticmethod
+  def _key_from_path(path: str) -> str:
+    base = os.path.basename(path)
+    name, _ = os.path.splitext(base)
+    return name or base or "unknown"
+
+  def _read_file_json(self, path: str, default: Any) -> Any:
+    if not os.path.isfile(path):
+      return default
+    with self._lock:
+      try:
+        with open(path, encoding="utf-8") as f:
+          return json.load(f)
+      except Exception:
+        return default
+
+  def _write_file_json(self, path: str, data: Any) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+      os.makedirs(parent, exist_ok=True)
+    tmp_path = f"{path}.tmp-{os.getpid()}-{threading.get_ident()}"
+    with self._lock:
+      with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+      os.replace(tmp_path, path)
+
+  def read_json(self, path: str, default: Any) -> Any:
+    if self._firestore_client is not None:
+      try:
+        key = self._key_from_path(path)
+        snap = self._firestore_client.collection(self._collection).document(key).get()
+        if snap.exists:
+          payload = snap.to_dict() or {}
+          if "value" in payload:
+            return payload["value"]
+      except Exception:
+        pass
+    return self._read_file_json(path, default)
+
+  def write_json(self, path: str, data: Any) -> None:
+    if self._firestore_client is not None:
+      try:
+        key = self._key_from_path(path)
+        self._firestore_client.collection(self._collection).document(key).set(
+          {
+            "key": key,
+            "value": data,
+            "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+          }
+        )
+      except Exception:
+        pass
+    self._write_file_json(path, data)
+
+
+_STORE = _DashboardStore()
+
+
 def _read_json(path: str, default: Any) -> Any:
-  if not os.path.isfile(path):
-    return default
-  with open(path, encoding="utf-8") as f:
-    return json.load(f)
+  return _STORE.read_json(path, default)
 
 
 def _write_json(path: str, data: Any) -> None:
-  os.makedirs(os.path.dirname(path), exist_ok=True)
-  with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+  _STORE.write_json(path, data)
 
 
 def _read_text(path: str, default: str = "") -> str:
@@ -270,6 +352,7 @@ def _git_runtime_status() -> Dict[str, Any]:
 def _runtime_snapshot(status: Dict[str, Any]) -> Dict[str, Any]:
   return {
     "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "storeBackend": _STORE.backend,
     "vmPolicy": "idle 5분(300초) 무입력 시 자동 중지 목표",
     "cloudRunGateway": "Cloud Run Gateway: healthy",
     "cloudRunTarget": status.get("cloudRun") or "Cloud Run: unknown",
@@ -394,6 +477,8 @@ def _pipeline_state(status: Dict[str, Any], queue_items: List[Dict[str, Any]]) -
     "statusBucket": bucket,
     "belongsTo": belongs_to,
     "currentStage": current_stage,
+    "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "storeBackend": _STORE.backend,
     "nodes": nodes,
   }
 
@@ -954,7 +1039,8 @@ def runtime_snapshot(include_services: bool = Query(default=True), include_n8n: 
       status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
       status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-  return {"ok": True, "snapshot": _runtime_snapshot(status)}
+  snapshot = _runtime_snapshot(status)
+  return {"ok": True, "snapshot": snapshot, "storeBackend": snapshot.get("storeBackend", "file")}
 
 
 @app.get("/api/pipeline-state")
@@ -980,4 +1066,4 @@ def pipeline_state(include_services: bool = Query(default=True), include_n8n: bo
       status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
       status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-  return {"ok": True, "pipeline": _pipeline_state(status, queue_items)}
+  return {"ok": True, "pipeline": _pipeline_state(status, queue_items), "storeBackend": _STORE.backend}

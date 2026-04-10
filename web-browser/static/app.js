@@ -34,19 +34,19 @@ const statusBodyWrap = document.getElementById("statusBodyWrap");
 const cursorAgentWrap = document.getElementById("cursorAgentWrap");
 const manualPanel = document.getElementById("manualPanel");
 const pipelineCurrentCommand = document.getElementById("pipelineCurrentCommand");
-const pipelineCurrentStep = document.getElementById("pipelineCurrentStep");
-const pipelineNodeCommand = document.getElementById("pipelineNodeCommand");
-const pipelineNodeCursor = document.getElementById("pipelineNodeCursor");
-const pipelineNodeVm = document.getElementById("pipelineNodeVm");
-const pipelineNodeGit = document.getElementById("pipelineNodeGit");
-const pipelineCommandStatus = document.getElementById("pipelineCommandStatus");
-const pipelineCursorStatus = document.getElementById("pipelineCursorStatus");
-const pipelineVmStatus = document.getElementById("pipelineVmStatus");
-const pipelineGitStatus = document.getElementById("pipelineGitStatus");
-const pipelineCommandTs = document.getElementById("pipelineCommandTs");
-const pipelineCursorTs = document.getElementById("pipelineCursorTs");
-const pipelineVmTs = document.getElementById("pipelineVmTs");
-const pipelineGitTs = document.getElementById("pipelineGitTs");
+const pipelineCurrentStage = document.getElementById("pipelineCurrentStage");
+const pipelineLastUpdate = document.getElementById("pipelineLastUpdate");
+const pipelineStageCommand = document.getElementById("pipelineStage-command");
+const pipelineStageCursor = document.getElementById("pipelineStage-cursor");
+const pipelineStageCloudRun = document.getElementById("pipelineStage-cloudrun");
+const pipelineStageVm = document.getElementById("pipelineStage-vm");
+const pipelineStageGit = document.getElementById("pipelineStage-git");
+const pipelineStatusCommand = document.getElementById("pipelineStatus-command");
+const pipelineStatusCursor = document.getElementById("pipelineStatus-cursor");
+const pipelineStatusCloudRun = document.getElementById("pipelineStatus-cloudrun");
+const pipelineStatusVm = document.getElementById("pipelineStatus-vm");
+const pipelineStatusGit = document.getElementById("pipelineStatus-git");
+const runtimeSnapshotGrid = document.getElementById("runtimeSnapshotGrid");
 const statusMainTitle = document.getElementById("statusMainTitle");
 const statusMainText = document.getElementById("statusMainText");
 const statusMainLink = document.getElementById("statusMainLink");
@@ -120,6 +120,13 @@ function showTabPlaceholder() {
   statusMainText.textContent = loadingTabs.includes(activeStatusTab)
     ? "불러오는 중…"
     : "채팅 전송 시 이 탭이 갱신됩니다.";
+}
+
+function stageClassForState(state) {
+  if (state === "running") return "stage-running";
+  if (state === "success") return "stage-success";
+  if (state === "failed") return "stage-failed";
+  return "stage-pending";
 }
 
 function hideProgressPanel() {
@@ -291,28 +298,44 @@ async function loadPipelineSnapshot() {
   return apiGet("/api/pipeline-state");
 }
 
-function setNodeVisual(groupEl, state) {
-  if (!groupEl) return;
-  const rect = groupEl.querySelector("rect");
+function setNodeVisual(stageEl, state) {
+  if (!stageEl) return;
+  const rect = stageEl.querySelector("rect");
   if (!rect) return;
-  rect.classList.remove("pipeline-node-pending", "pipeline-node-running", "pipeline-node-success", "pipeline-node-failed");
-  if (state === "running") rect.classList.add("pipeline-node-running");
-  else if (state === "success") rect.classList.add("pipeline-node-success");
-  else if (state === "failed") rect.classList.add("pipeline-node-failed");
-  else rect.classList.add("pipeline-node-pending");
+  rect.classList.remove("stage-pending", "stage-running", "stage-success", "stage-failed");
+  rect.classList.add("pipeline-stage", stageClassForState(state));
 }
 
-function setStatusText(el, status, ts) {
+function setStatusText(el, status) {
   if (!el) return;
-  el.textContent = `상태: ${status || "-"}`;
-  if (ts) {
-    const tsEl =
-      el === pipelineCommandStatus ? pipelineCommandTs :
-      el === pipelineCursorStatus ? pipelineCursorTs :
-      el === pipelineVmStatus ? pipelineVmTs :
-      el === pipelineGitStatus ? pipelineGitTs : null;
-    if (tsEl) tsEl.textContent = ts;
-  }
+  el.textContent = status || "-";
+}
+
+async function loadRuntimeSnapshot() {
+  return apiGet("/api/runtime-snapshot");
+}
+
+function renderRuntimeSnapshot(snapshot) {
+  if (!runtimeSnapshotGrid) return;
+  const git = snapshot.git || {};
+  const items = [
+    ["업데이트", snapshot.updatedAt || "-"],
+    ["VM 정책", snapshot.vmPolicy || "-"],
+    ["Cloud Run 게이트웨이", snapshot.cloudRunGateway || "-"],
+    ["Cloud Run 타깃", snapshot.cloudRunTarget || "-"],
+    ["Unity Worker", snapshot.unityWorker || "-"],
+    ["n8n", snapshot.n8n || "-"],
+    ["Git 브랜치", git.branch || "-"],
+    ["Git 마지막 커밋", git.lastCommit || "-"],
+    ["Git 작업트리", git.dirty ? "변경 있음" : "깨끗함"],
+  ];
+  runtimeSnapshotGrid.innerHTML = "";
+  items.forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "health-item";
+    item.innerHTML = `<div class="health-label">${escapeHtml(String(label))}</div><div class="health-value">${escapeHtml(String(value))}</div>`;
+    runtimeSnapshotGrid.appendChild(item);
+  });
 }
 
 async function refreshPipelineSnapshot() {
@@ -327,22 +350,38 @@ async function refreshPipelineSnapshot() {
     if (pipelineCurrentCommand) {
       pipelineCurrentCommand.textContent = `현재 명령: ${snap.currentCommand || "-"}`;
     }
-    if (pipelineCurrentStep) {
-      pipelineCurrentStep.textContent = `현재 단계: ${snap.currentStage || "-"} (${snap.belongsTo || "일반"})`;
+    if (pipelineCurrentStage) {
+      pipelineCurrentStage.textContent = `현재 단계: ${snap.currentStage || "-"} (${snap.belongsTo || "일반"})`;
+    }
+    if (pipelineLastUpdate) {
+      pipelineLastUpdate.textContent = `마지막 갱신: ${snap.updatedAt || "-"}`;
     }
 
-    setNodeVisual(pipelineNodeCommand, nodeMap.command?.state);
-    setNodeVisual(pipelineNodeCursor, nodeMap.cursor?.state);
-    setNodeVisual(pipelineNodeVm, nodeMap.vm?.state);
-    setNodeVisual(pipelineNodeGit, nodeMap.git?.state);
+    setNodeVisual(pipelineStageCommand, nodeMap.command?.state);
+    setNodeVisual(pipelineStageCursor, nodeMap.cursor?.state);
+    setNodeVisual(pipelineStageCloudRun, nodeMap.cloudrun?.state);
+    setNodeVisual(pipelineStageVm, nodeMap.vm?.state);
+    setNodeVisual(pipelineStageGit, nodeMap.git?.state);
 
-    setStatusText(pipelineCommandStatus, nodeMap.command?.state || "pending", snap.updatedAt || "-");
-    setStatusText(pipelineCursorStatus, nodeMap.cursor?.state || "idle", snap.updatedAt || "-");
-    setStatusText(pipelineVmStatus, nodeMap.vm?.state || "unknown", snap.updatedAt || "-");
-    setStatusText(pipelineGitStatus, nodeMap.git?.state || "unknown", snap.updatedAt || "-");
+    setStatusText(pipelineStatusCommand, nodeMap.command?.state || "pending");
+    setStatusText(pipelineStatusCursor, nodeMap.cursor?.state || "idle");
+    setStatusText(pipelineStatusCloudRun, nodeMap.cloudrun?.state || "idle");
+    setStatusText(pipelineStatusVm, nodeMap.vm?.state || "unknown");
+    setStatusText(pipelineStatusGit, nodeMap.git?.state || "unknown");
   } catch (_e) {
     if (pipelineCurrentCommand) pipelineCurrentCommand.textContent = "현재 명령: -";
-    if (pipelineCurrentStep) pipelineCurrentStep.textContent = "현재 단계: -";
+    if (pipelineCurrentStage) pipelineCurrentStage.textContent = "현재 단계: -";
+    if (pipelineLastUpdate) pipelineLastUpdate.textContent = "마지막 갱신: -";
+  }
+}
+
+async function refreshManualPanelData() {
+  await refreshPipelineSnapshot();
+  try {
+    const data = await loadRuntimeSnapshot();
+    renderRuntimeSnapshot(data.snapshot || {});
+  } catch (_e) {
+    if (runtimeSnapshotGrid) runtimeSnapshotGrid.innerHTML = "";
   }
 }
 
@@ -426,6 +465,7 @@ async function refreshActiveStatusTab() {
   }
   if (activeStatusTab === "manual") {
     renderStatusTab("manual", {});
+    await refreshManualPanelData();
     return;
   }
   let status;
@@ -685,9 +725,11 @@ statusTabs.onclick = (e) => {
   await loadHistory().catch(() => {});
   await loadQueue().catch(() => {});
   await loadActiveProject().catch(() => {});
-  await refreshPipelineSnapshot().catch(() => {});
+  await refreshManualPanelData().catch(() => {});
   setInterval(() => {
-    refreshPipelineSnapshot().catch(() => {});
+    if (activeStatusTab === "manual") {
+      refreshManualPanelData().catch(() => {});
+    }
   }, 4000);
   setActiveStatusTab("progress");
 })();
