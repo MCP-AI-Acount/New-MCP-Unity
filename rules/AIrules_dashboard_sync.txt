@@ -1,0 +1,15 @@
+# 대시보드 동기화 규칙 (결론)
+
+- 밴다이어그램(명령 프로세스) 또는 기기/클라우드 중요 제한점이 변경되면 아래 2개 문서를 항상 함께 수정:
+  - `detail description/remote_unity_stack_runbook.md`
+  - `detail description/bridge_agent_setup.md`
+
+- 같은 변경은 웹 대시보드에도 즉시 반영:
+  - `web-browser/static/index.html` (메뉴얼 본문/다이어그램 구조)
+  - `web-browser/static/app.js` (탭/렌더 로직)
+  - `web-browser/static/styles.css` (표시 스타일)
+  - `web-browser/server.py` (상태/스냅샷 API)
+
+- 파일 수정 후 기본 검증 절차:
+  - `python3 -m py_compile web-browser/server.py`
+  - 대시보드 상태 탭에서 메뉴얼/상태 스냅샷 갱신 확인
