@@ -4,6 +4,7 @@ import os
 import random
 import subprocess
 import threading
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 from urllib import error, parse, request
@@ -50,6 +51,7 @@ CURSOR_RULES_FILE = os.environ.get(
   "CURSOR_RULES_FILE", os.path.join(_REPO_ROOT, ".cursor", "rules", "cursor_top_rules.md")
 )
 WEB_CURSOR_RULES_FILE = os.path.join(DATA_DIR, "cursor_top_rules.md")
+RULES_SYNC_INTERVAL_SECONDS = max(1, int(os.environ.get("RULES_SYNC_INTERVAL_SECONDS", "2") or "2"))
 
 
 class _DashboardStore:
@@ -136,6 +138,61 @@ class _DashboardStore:
 
 
 _STORE = _DashboardStore()
+_rules_sync_last_signature = ""
+_rules_sync_thread_started = False
+_rules_sync_thread_lock = threading.Lock()
+
+
+def _rules_signature() -> str:
+  targets = _rules_sync_targets()
+  parts: List[str] = []
+  for path in targets:
+    if not path:
+      continue
+    mtime = _safe_mtime(path)
+    size = -1
+    try:
+      size = os.path.getsize(path)
+    except OSError:
+      size = -1
+    parts.append(f"{path}|{mtime}|{size}")
+  return "||".join(parts)
+
+
+def _rules_sync_if_changed(force: bool = False) -> Dict[str, Any]:
+  global _rules_sync_last_signature
+  current_signature = _rules_signature()
+  if not force and current_signature == _rules_sync_last_signature:
+    return {
+      "changed": False,
+      "sourcePath": "",
+      "writtenPaths": [],
+      "content": "",
+    }
+  synced = _sync_rules_files()
+  _rules_sync_last_signature = _rules_signature()
+  synced["changed"] = True
+  return synced
+
+
+def _rules_sync_daemon() -> None:
+  while True:
+    try:
+      _rules_sync_if_changed(force=False)
+    except Exception:
+      pass
+    time.sleep(RULES_SYNC_INTERVAL_SECONDS)
+
+
+def _start_rules_sync_background() -> None:
+  global _rules_sync_thread_started
+  with _rules_sync_thread_lock:
+    if _rules_sync_thread_started:
+      return
+    # Uvicorn reload/worker 환경에서도 중복 실행 영향을 최소화하기 위해 daemon thread 사용.
+    thread = threading.Thread(target=_rules_sync_daemon, name="rules-sync-daemon", daemon=True)
+    thread.start()
+    _rules_sync_thread_started = True
 
 
 def _read_json(path: str, default: Any) -> Any:
@@ -515,6 +572,11 @@ class ClipboardPermissionsMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ClipboardPermissionsMiddleware)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+@app.on_event("startup")
+def _startup_rules_sync() -> None:
+  _rules_sync_if_changed(force=True)
+  _start_rules_sync_background()
+
 
 class MessageIn(BaseModel):
   sessionId: str
@@ -826,7 +888,9 @@ def delete_session(session_id: str) -> Dict[str, Any]:
 
 @app.get("/api/rules")
 def get_rules() -> Dict[str, Any]:
-  synced = _sync_rules_files()
+  synced = _rules_sync_if_changed(force=False)
+  if not synced.get("changed"):
+    synced = _sync_rules_files()
   return {
     "content": synced.get("content", ""),
     "path": CURSOR_RULES_FILE,
@@ -837,10 +901,12 @@ def get_rules() -> Dict[str, Any]:
 
 @app.put("/api/rules")
 def put_rules(body: RulesUpdate) -> Dict[str, Any]:
+  global _rules_sync_last_signature
   written_paths: List[str] = []
   for path in _rules_sync_targets():
     if path and _write_text(path, body.content):
       written_paths.append(path)
+  _rules_sync_last_signature = _rules_signature()
   if not written_paths:
     raise HTTPException(status_code=500, detail="규칙 파일 저장에 실패했습니다.")
   return {"ok": True, "path": CURSOR_RULES_FILE, "syncedPaths": written_paths}
