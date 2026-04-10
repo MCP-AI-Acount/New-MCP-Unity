@@ -3,6 +3,7 @@ import json
 import os
 import random
 import subprocess
+import sys
 import threading
 import time
 from datetime import datetime
@@ -21,6 +22,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(ROOT, "data")
 STATIC_DIR = os.path.join(ROOT, "static")
 _REPO_ROOT = os.path.dirname(ROOT)
+if _REPO_ROOT not in sys.path:
+  sys.path.insert(0, _REPO_ROOT)
 
 
 def _load_env_file(path: str) -> None:
@@ -53,6 +56,19 @@ CURSOR_RULES_FILE = os.environ.get(
 WEB_CURSOR_RULES_FILE = os.path.join(DATA_DIR, "cursor_top_rules.md")
 RULES_SYNC_INTERVAL_SECONDS = max(1, int(os.environ.get("RULES_SYNC_INTERVAL_SECONDS", "2") or "2"))
 STATIC_ASSET_BASE_URL = (os.environ.get("STATIC_ASSET_BASE_URL", "") or "").strip().rstrip("/")
+BRIDGE_CHAT_SYNC_ENABLED = (os.environ.get("BRIDGE_CHAT_SYNC_ENABLED", "true") or "true").strip().lower() in {
+  "1",
+  "true",
+  "yes",
+  "on",
+}
+
+try:
+  from common.bridge_store import list_messages as bridge_list_messages  # type: ignore
+  from common.bridge_store import push_message as bridge_push_message  # type: ignore
+except Exception:
+  bridge_list_messages = None
+  bridge_push_message = None
 
 
 class _DashboardStore:
@@ -641,6 +657,16 @@ def _append_message(session_id: str, role: str, text: str) -> None:
   messages = _read_json(MESSAGES_FILE, [])
   messages.append({"sessionId": session_id, "role": role, "text": text})
   _write_json(MESSAGES_FILE, messages)
+  if BRIDGE_CHAT_SYNC_ENABLED and bridge_push_message is not None:
+    try:
+      bridge_push_message(
+        role=role,
+        text=text,
+        source="web-browser",
+        session_id=session_id,
+      )
+    except Exception:
+      pass
 
 
 def _touch_session(session_id: str) -> None:
@@ -675,8 +701,24 @@ def _system_prompt_for_chat() -> str:
 
 
 def _session_messages_for_llm(session_id: str) -> List[Dict[str, str]]:
-  allm = _read_json(MESSAGES_FILE, [])
-  sess = [m for m in allm if m.get("sessionId") == session_id]
+  sess: List[Dict[str, Any]] = []
+  if BRIDGE_CHAT_SYNC_ENABLED and bridge_list_messages is not None:
+    try:
+      bridge_items = bridge_list_messages(limit=200, session_id=session_id)
+      if isinstance(bridge_items, list) and bridge_items:
+        sess = [
+          {
+            "sessionId": session_id,
+            "role": str(m.get("role", "user")),
+            "text": str(m.get("text", "")),
+          }
+          for m in bridge_items
+        ]
+    except Exception:
+      sess = []
+  if not sess:
+    allm = _read_json(MESSAGES_FILE, [])
+    sess = [m for m in allm if m.get("sessionId") == session_id]
   out: List[Dict[str, str]] = []
   for m in sess[-40:]:
     r = m.get("role", "user")
@@ -876,7 +918,30 @@ def get_sessions() -> List[Dict[str, Any]]:
 
 @app.get("/api/chat/messages")
 def get_messages() -> List[Dict[str, Any]]:
-  return _read_json(MESSAGES_FILE, [])
+  local_messages = _read_json(MESSAGES_FILE, [])
+  if not BRIDGE_CHAT_SYNC_ENABLED or bridge_list_messages is None:
+    return local_messages
+  session_order: List[str] = []
+  for item in local_messages:
+    sid = str(item.get("sessionId", ""))
+    if sid and sid not in session_order:
+      session_order.append(sid)
+  merged: List[Dict[str, Any]] = []
+  for sid in session_order:
+    try:
+      bridge_items = bridge_list_messages(limit=200, session_id=sid)
+    except Exception:
+      bridge_items = []
+    if bridge_items:
+      merged.extend(
+        {
+          "sessionId": sid,
+          "role": str(m.get("role", "user")),
+          "text": str(m.get("text", "")),
+        }
+        for m in bridge_items
+      )
+  return merged if merged else local_messages
 
 
 @app.get("/api/cursor-prompt")
