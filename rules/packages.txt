@@ -9,6 +9,7 @@ google-auth-oauthlib
 pillow
 pytesseract
 google-cloud-tasks
+requests
 # NewMCP Python MCP — google-calendar (MCP_Server/google_calendar_mcp.py)
 mcp
 google-api-python-client

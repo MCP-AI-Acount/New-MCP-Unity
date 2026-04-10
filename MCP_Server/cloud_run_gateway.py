@@ -19,6 +19,13 @@ if _ROOT not in sys.path:
 
 from collaboration.remote_task_runner import run_remote_task
 from collaboration.unity_remote_orchestrator import dispatch_unity_task, read_unity_worker_file
+from common.bridge_store import (
+    claim_next_pending_command,
+    list_messages,
+    push_message,
+    queue_command,
+    save_command_result,
+)
 
 try:
     from google.cloud import tasks_v2
@@ -61,6 +68,35 @@ class UnityFileReadRequest(BaseModel):
     project_path: str = ""
     unity_worker_url: str = ""
     unity_worker_bearer_token: str = ""
+
+
+class BridgeMessageRequest(BaseModel):
+    role: str
+    text: str
+    source: str = ""
+    metadata: Dict[str, Any] = {}
+
+
+class BridgeCommandRequest(BaseModel):
+    command: str
+    source: str = ""
+    repo_dir: str = ""
+    timeout_sec: int = 300
+    metadata: Dict[str, Any] = {}
+
+
+class BridgeAgentPollRequest(BaseModel):
+    agent_id: str
+
+
+class BridgeCommandResultRequest(BaseModel):
+    command_id: str
+    agent_id: str
+    success: bool
+    exit_code: int = 0
+    stdout: str = ""
+    stderr: str = ""
+    metadata: Dict[str, Any] = {}
 
 
 def _check_bearer(auth_header: str) -> None:
@@ -168,6 +204,61 @@ def _enqueue_http_task(
 @app.get("/healthz")
 def healthz() -> Dict[str, Any]:
     return {"ok": True, "service": "remote-mcp-gateway"}
+
+
+@app.get("/v1/bridge/messages")
+def bridge_list_messages(limit: int = 200, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    return {"ok": True, "messages": list_messages(limit=limit)}
+
+
+@app.post("/v1/bridge/messages")
+def bridge_push_message(body: BridgeMessageRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    item = push_message(
+        role=body.role,
+        text=body.text,
+        source=body.source,
+        metadata=body.metadata,
+    )
+    return {"ok": True, "message": item}
+
+
+@app.post("/v1/bridge/commands")
+def bridge_queue_command(body: BridgeCommandRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    item = queue_command(
+        command=body.command,
+        source=body.source,
+        repo_dir=body.repo_dir,
+        timeout_sec=body.timeout_sec,
+        metadata=body.metadata,
+    )
+    return {"ok": True, "command": item}
+
+
+@app.post("/v1/bridge/commands/claim")
+def bridge_claim_command(body: BridgeAgentPollRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    item = claim_next_pending_command(agent_id=body.agent_id)
+    return {"ok": True, "command": item}
+
+
+@app.post("/v1/bridge/commands/result")
+def bridge_save_command_result(body: BridgeCommandResultRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    item = save_command_result(
+        command_id=body.command_id,
+        agent_id=body.agent_id,
+        success=body.success,
+        exit_code=body.exit_code,
+        stdout=body.stdout,
+        stderr=body.stderr,
+        metadata=body.metadata,
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="command_id not found")
+    return {"ok": True, "command": item}
 
 
 @app.post("/v1/tasks/run")
