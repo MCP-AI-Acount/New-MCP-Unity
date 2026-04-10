@@ -17,6 +17,11 @@ fi
 
 cd "$REPO_ROOT"
 
+if [[ -f "$REPO_ROOT/common/load_you_keys.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/common/load_you_keys.sh" || true
+fi
+
 if [[ ! -d .git ]]; then
   echo "[one_command] git 저장소가 아닙니다: $REPO_ROOT" >&2
   exit 1
@@ -64,6 +69,7 @@ load_pat() {
     candidates+=("${ENV_FILE_PATH}")
   fi
   candidates+=(
+    "$REPO_ROOT/# you/keys.env"
     "$HOME/.config/agent-secrets.env"
     "/home/ubuntu/.config/agent-secrets.env"
     "/home/GCP/ReportMaker/temp/agent-secrets.env"

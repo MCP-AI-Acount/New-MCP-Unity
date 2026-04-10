@@ -33,6 +33,10 @@ cat > "$REBOOT_INIT_FILE" <<'EOF'
 if [[ -d /workspace ]]; then
   export REPO_ROOT="/workspace"
 fi
+if [[ -f "${REPO_ROOT:-/workspace}/common/load_you_keys.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "${REPO_ROOT:-/workspace}/common/load_you_keys.sh" >/dev/null 2>&1 || true
+fi
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
