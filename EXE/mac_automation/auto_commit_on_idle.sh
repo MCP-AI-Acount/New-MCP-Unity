@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/Users/Windows/Documents/MCP_ Sort/NewMCP}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_DIR="${REPO_DIR:-$DEFAULT_REPO_DIR}"
 BRANCH_NAME="${BRANCH_NAME:-}"
 IDLE_THRESHOLD_SECONDS="${IDLE_THRESHOLD_SECONDS:-300}"
 COMMIT_MESSAGE_PREFIX="${COMMIT_MESSAGE_PREFIX:-auto: idle checkpoint}"
