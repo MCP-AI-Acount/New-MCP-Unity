@@ -99,6 +99,9 @@ Cloud Tasks 큐에 들어간 작업은 클라이언트(아이폰) 연결이 끊�
 - Cloud Run: `min-instances=0`, `max-instances=1`
 - VM: 평시 중지, 작업 시간에만 시작(스케줄러 사용)
 - 로그/스토리지 수명주기 정책 적용
+- 보안 기본값:
+  - Cloud Run 게이트웨이 공개 접근은 기본 비활성(`ALLOW_UNAUTHENTICATED=false`)
+  - VM 워커 방화벽은 `UNITY_WORKER_SOURCE_RANGES`로 허용 IP 대역을 명시해야 생성
 
 ## 5. 보안
 

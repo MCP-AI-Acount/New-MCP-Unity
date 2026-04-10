@@ -13,6 +13,7 @@ CLOUD_TASKS_QUEUE_REMOTE="${CLOUD_TASKS_QUEUE_REMOTE:-remote-mcp-tasks}"
 CLOUD_TASKS_QUEUE_UNITY="${CLOUD_TASKS_QUEUE_UNITY:-remote-mcp-unity-tasks}"
 CLOUD_TASKS_INTERNAL_TOKEN="${CLOUD_TASKS_INTERNAL_TOKEN:-}"
 EXTRA_ENV_VARS="${EXTRA_ENV_VARS:-}"
+ALLOW_UNAUTHENTICATED="${ALLOW_UNAUTHENTICATED:-false}"
 
 if [[ -z "$PROJECT_ID" ]]; then
   echo "PROJECT_ID 환경변수가 필요합니다."
@@ -80,16 +81,25 @@ else
   env_vars="$base_env_vars"
 fi
 
-gcloud run deploy "$SERVICE_NAME" \
-  --image "$IMAGE_URI" \
-  --region "$REGION" \
-  --allow-unauthenticated \
-  --min-instances 0 \
-  --max-instances 1 \
-  --cpu 1 \
-  --memory 512Mi \
-  --timeout 300 \
+deploy_cmd=(
+  gcloud run deploy "$SERVICE_NAME"
+  --image "$IMAGE_URI"
+  --region "$REGION"
+  --min-instances 0
+  --max-instances 1
+  --cpu 1
+  --memory 512Mi
+  --timeout 300
   --set-env-vars "$env_vars"
+)
+
+if [[ "$ALLOW_UNAUTHENTICATED" == "true" ]]; then
+  deploy_cmd+=(--allow-unauthenticated)
+else
+  deploy_cmd+=(--no-allow-unauthenticated)
+fi
+
+"${deploy_cmd[@]}"
 
 echo "완료: 최소 파일로 Cloud Run 배포 완료"
 echo "image: $IMAGE_URI"

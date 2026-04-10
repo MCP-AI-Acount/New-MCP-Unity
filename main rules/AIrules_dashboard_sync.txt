@@ -9,6 +9,7 @@
   - `web-browser/static/app.js` (탭/렌더 로직)
   - `web-browser/static/styles.css` (표시 스타일)
   - `web-browser/server.py` (상태/스냅샷 API)
+  - 정적 자산 CDN 분리 사용 시 `STATIC_ASSET_BASE_URL` 기준 링크(`index.html`)와 정적 배포 스크립트(`EXE/deploy_web_browser_cdn.sh`)를 함께 갱신
 
 - 파일 수정 후 기본 검증 절차:
   - `python3 -m py_compile web-browser/server.py`

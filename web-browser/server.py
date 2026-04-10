@@ -11,7 +11,7 @@ from urllib import error, parse, request
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -52,6 +52,7 @@ CURSOR_RULES_FILE = os.environ.get(
 )
 WEB_CURSOR_RULES_FILE = os.path.join(DATA_DIR, "cursor_top_rules.md")
 RULES_SYNC_INTERVAL_SECONDS = max(1, int(os.environ.get("RULES_SYNC_INTERVAL_SECONDS", "2") or "2"))
+STATIC_ASSET_BASE_URL = (os.environ.get("STATIC_ASSET_BASE_URL", "") or "").strip().rstrip("/")
 
 
 class _DashboardStore:
@@ -74,7 +75,9 @@ class _DashboardStore:
       )
       self._firestore_client = firestore.Client(project=project_id or None)
       self._backend = "firestore"
-    except Exception:
+    except Exception as e:
+      if mode == "firestore":
+        raise RuntimeError("WEB_STORE_MODE=firestore 이지만 Firestore 연결에 실패했습니다.") from e
       self._firestore_client = None
       self._backend = "file"
 
@@ -410,6 +413,7 @@ def _runtime_snapshot(status: Dict[str, Any]) -> Dict[str, Any]:
   return {
     "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "storeBackend": _STORE.backend,
+    "staticAssetBaseUrl": STATIC_ASSET_BASE_URL or "(builtin:/static)",
     "vmPolicy": "idle 5분(300초) 무입력 시 자동 중지 목표",
     "cloudRunGateway": "Cloud Run Gateway: healthy",
     "cloudRunTarget": status.get("cloudRun") or "Cloud Run: unknown",
@@ -570,7 +574,25 @@ class ClipboardPermissionsMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(ClipboardPermissionsMiddleware)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/static/{asset_path:path}")
+def static_asset(asset_path: str):
+  if STATIC_ASSET_BASE_URL:
+    raise HTTPException(status_code=404, detail="static assets are served by external CDN")
+  static_root = os.path.realpath(STATIC_DIR)
+  target_path = os.path.realpath(os.path.join(STATIC_DIR, asset_path))
+  if not (target_path == static_root or target_path.startswith(static_root + os.sep)):
+    raise HTTPException(status_code=403, detail="invalid static asset path")
+  if not os.path.isfile(target_path):
+    raise HTTPException(status_code=404, detail="asset not found")
+  response = FileResponse(target_path)
+  lowered = target_path.lower()
+  if lowered.endswith(".html"):
+    response.headers["Cache-Control"] = "public, max-age=60"
+  else:
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+  response.headers["X-Content-Type-Options"] = "nosniff"
+  return response
 
 @app.on_event("startup")
 def _startup_rules_sync() -> None:
@@ -816,9 +838,35 @@ def _post_cursor_bridge_webhook(session_id: str, user_text: str) -> None:
     pass
 
 
+def _render_index_html() -> str:
+  index_path = os.path.join(STATIC_DIR, "index.html")
+  html = _read_text(index_path, "")
+  if not html:
+    return ""
+  if STATIC_ASSET_BASE_URL:
+    html = html.replace('href="/static/styles.css"', f'href="{STATIC_ASSET_BASE_URL}/styles.css"')
+    html = html.replace('src="/static/app.js"', f'src="{STATIC_ASSET_BASE_URL}/app.js"')
+  return html
+
+
 @app.get("/")
 def index():
+  if STATIC_ASSET_BASE_URL:
+    html = _render_index_html()
+    if not html:
+      raise HTTPException(status_code=500, detail="index.html not found")
+    return Response(content=html, media_type="text/html; charset=utf-8")
   return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/healthz")
+def healthz() -> Dict[str, Any]:
+  return {
+    "ok": True,
+    "service": "web-browser-dashboard",
+    "storeBackend": _STORE.backend,
+    "staticAssetBaseUrl": STATIC_ASSET_BASE_URL or "",
+  }
 
 
 @app.get("/api/chat/sessions")
