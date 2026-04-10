@@ -46,8 +46,9 @@ STATUS_FILE = os.path.join(DATA_DIR, "status.json")
 QUEUE_FILE = os.path.join(DATA_DIR, "command_queue.json")
 SITE_CONFIG_FILE = os.path.join(DATA_DIR, "site_config.json")
 CURSOR_RULES_FILE = os.environ.get(
-  "CURSOR_RULES_FILE", os.path.join(DATA_DIR, "cursor_top_rules.md")
+  "CURSOR_RULES_FILE", os.path.join(_REPO_ROOT, ".cursor", "rules", "cursor_top_rules.md")
 )
+WEB_CURSOR_RULES_FILE = os.path.join(DATA_DIR, "cursor_top_rules.md")
 
 
 def _read_json(path: str, default: Any) -> Any:
@@ -61,6 +62,64 @@ def _write_json(path: str, data: Any) -> None:
   os.makedirs(os.path.dirname(path), exist_ok=True)
   with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _read_text(path: str, default: str = "") -> str:
+  if not os.path.isfile(path):
+    return default
+  try:
+    with open(path, encoding="utf-8") as f:
+      return f.read()
+  except OSError:
+    return default
+
+
+def _write_text(path: str, content: str) -> bool:
+  try:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+      f.write(content)
+    return True
+  except OSError:
+    return False
+
+
+def _rules_sync_targets() -> List[str]:
+  raw = [
+    CURSOR_RULES_FILE,
+    os.path.join(_REPO_ROOT, ".cursor", "rules", "cursor_top_rules.md"),
+    WEB_CURSOR_RULES_FILE,
+  ]
+  out: List[str] = []
+  for path in raw:
+    if path and path not in out:
+      out.append(path)
+  return out
+
+
+def _safe_mtime(path: str) -> float:
+  try:
+    return os.path.getmtime(path)
+  except OSError:
+    return -1.0
+
+
+def _sync_rules_files() -> Dict[str, Any]:
+  targets = _rules_sync_targets()
+  existing = [p for p in targets if os.path.isfile(p)]
+  source_path = max(existing, key=_safe_mtime) if existing else targets[0]
+  content = _read_text(source_path, "") if source_path else ""
+  written_paths: List[str] = []
+  for path in targets:
+    if not path:
+      continue
+    if _write_text(path, content):
+      written_paths.append(path)
+  return {
+    "sourcePath": source_path,
+    "writtenPaths": written_paths,
+    "content": content,
+  }
 
 
 def _site_config() -> Dict[str, Any]:
@@ -682,20 +741,24 @@ def delete_session(session_id: str) -> Dict[str, Any]:
 
 @app.get("/api/rules")
 def get_rules() -> Dict[str, Any]:
-  if not os.path.isfile(CURSOR_RULES_FILE):
-    return {"content": "", "path": CURSOR_RULES_FILE}
-  with open(CURSOR_RULES_FILE, encoding="utf-8") as f:
-    return {"content": f.read(), "path": CURSOR_RULES_FILE}
+  synced = _sync_rules_files()
+  return {
+    "content": synced.get("content", ""),
+    "path": CURSOR_RULES_FILE,
+    "sourcePath": synced.get("sourcePath", ""),
+    "syncedPaths": synced.get("writtenPaths", []),
+  }
 
 
 @app.put("/api/rules")
 def put_rules(body: RulesUpdate) -> Dict[str, Any]:
-  parent = os.path.dirname(CURSOR_RULES_FILE)
-  if parent:
-    os.makedirs(parent, exist_ok=True)
-  with open(CURSOR_RULES_FILE, "w", encoding="utf-8") as f:
-    f.write(body.content)
-  return {"ok": True, "path": CURSOR_RULES_FILE}
+  written_paths: List[str] = []
+  for path in _rules_sync_targets():
+    if path and _write_text(path, body.content):
+      written_paths.append(path)
+  if not written_paths:
+    raise HTTPException(status_code=500, detail="규칙 파일 저장에 실패했습니다.")
+  return {"ok": True, "path": CURSOR_RULES_FILE, "syncedPaths": written_paths}
 
 
 @app.get("/api/site-config")

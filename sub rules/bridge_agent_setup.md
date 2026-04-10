@@ -24,6 +24,10 @@ BRIDGE_POLL_SECONDS=3
 BRIDGE_BASE_URL="$CLOUD_RUN_URL" BRIDGE_AUTH_TOKEN="$REMOTE_API_BEARER_TOKEN" DEVICE_ID="mac-main" bash EXE/mac_automation/install_bridge_agent.sh
 ```
 
+설치 시 자동 처리:
+- 저장소 규칙 파일(`.cursor/rules/cursor_top_rules.md`)을 맥 Cursor 규칙 파일(`$HOME/.cursor/rules/cursor_top_rules.md`)로 동기화
+- 웹 규칙 파일(`web-browser/data/cursor_top_rules.md`)과도 서버 API(`/api/rules`) 기준으로 자동 동기화
+
 ## 3) 동작
 
 - 에이전트는 `com.newmcp.bridge.agent` launch agent로 실행됨

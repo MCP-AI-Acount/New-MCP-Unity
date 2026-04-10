@@ -38,9 +38,9 @@ cat > "$PLIST_PATH" <<PLIST
   <dict>
     <key>BRIDGE_BASE_URL</key><string>$BRIDGE_BASE_URL</string>
     <key>BRIDGE_AUTH_TOKEN</key><string>$BRIDGE_AUTH_TOKEN</string>
-    <key>DEVICE_ID</key><string>$DEVICE_ID</string>
-    <key>WORKSPACE_DIR</key><string>$WORKSPACE_DIR</string>
-    <key>POLL_INTERVAL_SECONDS</key><string>$POLL_INTERVAL_SECONDS</string>
+    <key>BRIDGE_DEVICE_ID</key><string>$DEVICE_ID</string>
+    <key>REPO_DIR</key><string>$WORKSPACE_DIR</string>
+    <key>BRIDGE_POLL_SECONDS</key><string>$POLL_INTERVAL_SECONDS</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -52,6 +52,11 @@ PLIST
 
 launchctl unload "$PLIST_PATH" >/dev/null 2>&1 || true
 launchctl load "$PLIST_PATH"
+
+# 맥 Cursor 앱 규칙 파일을 저장소 규칙으로 동기화
+if [[ -x "$REPO_DIR/EXE/mac_automation/sync_cursor_rules.sh" ]]; then
+  REPO_DIR="$REPO_DIR" bash "$REPO_DIR/EXE/mac_automation/sync_cursor_rules.sh" || true
+fi
 
 echo "[install_bridge_agent] installed: $PLIST_PATH"
 echo "[install_bridge_agent] logs: $LOG_PATH / $ERR_PATH"
