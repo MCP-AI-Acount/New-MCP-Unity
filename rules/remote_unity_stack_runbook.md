@@ -84,7 +84,7 @@ curl -X POST "https://<cloud-run-url>/v1/unity/tasks/run" \
       "graphName":"Graph",
       "colorHex":"#00FF00"
     },
-    "project_name":"ReportMaker",
+    "project_name":"ReportManager",
     "unity_worker_url":"https://<vm-public-ip>:8443",
     "n8n_webhook_url":"https://<n8n-webhook>",
     "run_async": true
