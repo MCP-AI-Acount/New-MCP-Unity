@@ -18,9 +18,9 @@ from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ListToolsResult, Tool
 
-from common.google_sheets_client import append_row, get_values
-from common.ocr_image import ocr_image_path
-from common.template_fill import fill_row_from_template
+from common.__google_sheets_client import append_row, get_values
+from common.__ocr_image import ocr_image_path
+from common.__template_fill import fill_row_from_template
 
 server = Server("google-sheets")
 
@@ -177,7 +177,7 @@ async def _ocr_from_image_path(args: Dict[str, Any]) -> CallToolResult:
 
 
 async def _screenshot_to_sheet(args: Dict[str, Any]) -> CallToolResult:
-    from collaboration.screenshot_to_sheet_pipeline import run_pipeline
+    from collaboration.__screenshot_to_sheet_pipeline import run_pipeline
 
     image_path = args["image_path"]
     template_path = args["template_path"]

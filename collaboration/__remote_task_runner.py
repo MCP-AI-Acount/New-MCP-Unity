@@ -4,8 +4,8 @@ Cloud Run HTTPS 요청 기반 원격 작업 실행 파이프라인
 
 from typing import Any, Dict
 
-from collaboration.screenshot_to_sheet_pipeline import run_pipeline
-from common.n8n_logger import post_n8n_log
+from collaboration.__screenshot_to_sheet_pipeline import run_pipeline
+from common.__n8n_logger import post_n8n_log
 
 
 def run_remote_task(payload: Dict[str, Any]) -> Dict[str, Any]:

@@ -17,5 +17,5 @@
 
 ## CLI
 - `python3 collaboration/screenshot_to_sheet_pipeline.py --image ... --template ... --spreadsheet-id ...`
-- 또는 `EXE/run_screenshot_to_sheet.py` 동일 인자
+- 또는 `EXE/_run_screenshot_to_sheet.py` 동일 인자
 - 먼저 `--dry-run` 으로 OCR·추출 행만 확인 권장

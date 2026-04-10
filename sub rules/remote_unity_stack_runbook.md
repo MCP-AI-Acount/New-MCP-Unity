@@ -47,7 +47,7 @@ export UNITY_BATCH_METHOD="RemoteAutomation.EntryPoint"
 5) 워커 실행
 
 ```bash
-uvicorn MCP_Server.unity_worker_gateway:app --host 0.0.0.0 --port 8443
+uvicorn MCP_Server.__unity_worker_gateway:app --host 0.0.0.0 --port 8443
 ```
 
 ## 3. Cloud Run에서 Unity 작업 호출

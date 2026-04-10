@@ -17,9 +17,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from collaboration.remote_task_runner import run_remote_task
-from collaboration.unity_remote_orchestrator import dispatch_unity_task, read_unity_worker_file
-from common.bridge_store import (
+from collaboration.__remote_task_runner import run_remote_task
+from collaboration.__unity_remote_orchestrator import dispatch_unity_task, read_unity_worker_file
+from common.__bridge_store import (
     claim_next_pending_command,
     list_messages,
     push_message,

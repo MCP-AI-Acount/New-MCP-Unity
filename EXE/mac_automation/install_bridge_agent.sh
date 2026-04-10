@@ -32,7 +32,7 @@ cat > "$PLIST_PATH" <<PLIST
   <array>
     <string>/usr/bin/env</string>
     <string>python3</string>
-    <string>$REPO_DIR/EXE/mac_automation/bridge_agent.py</string>
+    <string>$REPO_DIR/EXE/mac_automation/__bridge_agent.py</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>

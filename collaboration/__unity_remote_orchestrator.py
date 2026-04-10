@@ -8,7 +8,7 @@ import base64
 from typing import Any, Dict
 from urllib import error, request
 
-from common.n8n_logger import post_n8n_log
+from common.__n8n_logger import post_n8n_log
 
 
 def _post_json(

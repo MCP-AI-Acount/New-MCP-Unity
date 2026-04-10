@@ -64,8 +64,8 @@ BRIDGE_CHAT_SYNC_ENABLED = (os.environ.get("BRIDGE_CHAT_SYNC_ENABLED", "true") o
 }
 
 try:
-  from common.bridge_store import list_messages as bridge_list_messages  # type: ignore
-  from common.bridge_store import push_message as bridge_push_message  # type: ignore
+  from common.__bridge_store import list_messages as bridge_list_messages  # type: ignore
+  from common.__bridge_store import push_message as bridge_push_message  # type: ignore
 except Exception:
   bridge_list_messages = None
   bridge_push_message = None
