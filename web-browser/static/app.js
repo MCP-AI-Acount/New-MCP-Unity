@@ -32,6 +32,7 @@ const copyCursorPromptBtn = document.getElementById("copyCursorPromptBtn");
 const statusTabs = document.getElementById("statusTabs");
 const statusBodyWrap = document.getElementById("statusBodyWrap");
 const cursorAgentWrap = document.getElementById("cursorAgentWrap");
+const manualPanel = document.getElementById("manualPanel");
 const statusMainTitle = document.getElementById("statusMainTitle");
 const statusMainText = document.getElementById("statusMainText");
 const statusMainLink = document.getElementById("statusMainLink");
@@ -64,6 +65,7 @@ let progressPollTimer = null;
 const TAB_TITLES = {
   queue: "명령 큐",
   progress: "진행 상황",
+  manual: "메뉴얼",
   n8n: "n8n",
   service: "서비스",
   screenshot: "스크린샷",
@@ -93,6 +95,10 @@ function showTabPlaceholder() {
   statusMainLink.href = "#";
   statusMainTitle.textContent = TAB_TITLES[activeStatusTab] || "상태";
   if (activeStatusTab === "cursorAgent") {
+    statusMainText.textContent = "";
+    return;
+  }
+  if (activeStatusTab === "manual") {
     statusMainText.textContent = "";
     return;
   }
@@ -280,6 +286,16 @@ function renderStatusTab(tab, status) {
   if (tab === "cursorAgent") {
     if (statusBodyWrap) statusBodyWrap.classList.add("hidden");
     if (cursorAgentWrap) cursorAgentWrap.classList.remove("hidden");
+    if (manualPanel) manualPanel.classList.add("hidden");
+    hideProgressPanel();
+    statusMainLink.classList.remove("visible");
+    statusMainLink.href = "#";
+    return;
+  }
+  if (tab === "manual") {
+    if (statusBodyWrap) statusBodyWrap.classList.add("hidden");
+    if (cursorAgentWrap) cursorAgentWrap.classList.add("hidden");
+    if (manualPanel) manualPanel.classList.remove("hidden");
     hideProgressPanel();
     statusMainLink.classList.remove("visible");
     statusMainLink.href = "#";
@@ -287,6 +303,7 @@ function renderStatusTab(tab, status) {
   }
   if (statusBodyWrap) statusBodyWrap.classList.remove("hidden");
   if (cursorAgentWrap) cursorAgentWrap.classList.add("hidden");
+  if (manualPanel) manualPanel.classList.add("hidden");
 
   statusMainLink.classList.remove("visible");
   statusMainLink.href = "#";
@@ -332,6 +349,10 @@ function renderStatusTab(tab, status) {
 async function refreshActiveStatusTab() {
   if (activeStatusTab === "cursorAgent") {
     renderStatusTab("cursorAgent", {});
+    return;
+  }
+  if (activeStatusTab === "manual") {
+    renderStatusTab("manual", {});
     return;
   }
   let status;

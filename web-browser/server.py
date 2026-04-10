@@ -2,6 +2,7 @@
 import json
 import os
 import random
+import subprocess
 from datetime import datetime
 from typing import Any, Dict, List
 from urllib import error, parse, request
@@ -176,6 +177,47 @@ def _get_url_json(url: str, timeout: int = 10) -> Dict[str, Any]:
     return {"ok": False, "status": e.code, "body": ""}
   except Exception:
     return {"ok": False, "status": 0, "body": ""}
+
+
+def _run_cmd(args: List[str], timeout: int = 8) -> Dict[str, Any]:
+  try:
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    return {
+      "ok": proc.returncode == 0,
+      "returncode": proc.returncode,
+      "stdout": (proc.stdout or "").strip(),
+      "stderr": (proc.stderr or "").strip(),
+    }
+  except Exception as e:
+    return {"ok": False, "returncode": -1, "stdout": "", "stderr": str(e)}
+
+
+def _git_runtime_status() -> Dict[str, Any]:
+  git_dir = os.path.join(_REPO_ROOT, ".git")
+  if not os.path.isdir(git_dir):
+    return {"available": False, "branch": "-", "lastCommit": "-", "dirty": False}
+
+  branch_out = _run_cmd(["git", "-C", _REPO_ROOT, "branch", "--show-current"])
+  commit_out = _run_cmd(["git", "-C", _REPO_ROOT, "log", "--oneline", "-n", "1"])
+  dirty_out = _run_cmd(["git", "-C", _REPO_ROOT, "status", "--porcelain"])
+  return {
+    "available": True,
+    "branch": branch_out["stdout"] or "-",
+    "lastCommit": commit_out["stdout"] or "-",
+    "dirty": bool(dirty_out["stdout"]),
+  }
+
+
+def _runtime_snapshot(status: Dict[str, Any]) -> Dict[str, Any]:
+  return {
+    "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "vmPolicy": "idle 5분(300초) 무입력 시 자동 중지 목표",
+    "cloudRunGateway": "Cloud Run Gateway: healthy",
+    "cloudRunTarget": status.get("cloudRun") or "Cloud Run: unknown",
+    "unityWorker": status.get("unityWorker") or "Unity Worker: unknown",
+    "n8n": (status.get("n8n") or {}).get("lastResult", "unknown"),
+    "git": _git_runtime_status(),
+  }
 
 
 app = FastAPI(title="remote-dev-web-browser")
@@ -695,3 +737,27 @@ def ack_queue(body: AckIn) -> Dict[str, Any]:
     status["latestScreenshotUrl"] = body.screenshotUrl
   _write_json(STATUS_FILE, status)
   return {"ok": True}
+
+
+@app.get("/api/runtime-snapshot")
+def runtime_snapshot(include_services: bool = Query(default=True), include_n8n: bool = Query(default=True)) -> Dict[str, Any]:
+  status = _read_json(STATUS_FILE, {})
+  if include_services:
+    cloud_run_health_url = _effective_setting("cloudRunHealthUrl", "CLOUD_RUN_HEALTH_URL", "")
+    unity_worker_health_url = _effective_setting("unityWorkerHealthUrl", "UNITY_WORKER_HEALTH_URL", "")
+    if cloud_run_health_url:
+      res = _get_url_json(cloud_run_health_url)
+      status["cloudRun"] = f"Cloud Run: {'healthy' if res['ok'] else 'down'}"
+    if unity_worker_health_url:
+      res = _get_url_json(unity_worker_health_url)
+      status["unityWorker"] = f"Unity Worker: {'healthy' if res['ok'] else 'down'}"
+
+  if include_n8n:
+    n8n_status_url = _effective_setting("n8nStatusUrl", "N8N_STATUS_URL", "")
+    if n8n_status_url:
+      res = _get_url_json(n8n_status_url)
+      status.setdefault("n8n", {})
+      status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
+      status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+  return {"ok": True, "snapshot": _runtime_snapshot(status)}

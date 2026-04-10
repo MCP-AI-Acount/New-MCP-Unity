@@ -50,6 +50,23 @@ body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-
 .status-main-line { margin: 0 0 8px; color: var(--muted); font-size: .82rem; flex-shrink: 0; }
 .status-card p,.status-card a { margin: 0; color: var(--muted); font-size: .85rem; }
 .status-main-card { min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.manual-card { gap: 10px; }
+.manual-section { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: rgba(255,255,255,0.02); }
+.manual-section h4 { margin: 0 0 8px; font-size: .85rem; }
+.manual-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: .78rem; line-height: 1.5; }
+.manual-list li { margin: 0 0 4px; }
+.venn-wrap { display: flex; justify-content: center; align-items: center; padding: 8px 0; }
+.venn-diagram { width: min(520px, 96%); height: 220px; }
+.venn-circle { fill-opacity: .28; stroke: var(--text); stroke-opacity: .35; stroke-width: 1.2; }
+.venn-cloud-run { fill: #4f7cff; }
+.venn-cursor { fill: #2fcf8f; }
+.venn-mac { fill: #ff9f43; }
+.venn-text { fill: var(--text); font-size: 12px; font-weight: 600; }
+.venn-subtext { fill: var(--muted); font-size: 11px; }
+.health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.health-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--panel-2); }
+.health-label { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
+.health-value { font-size: .78rem; color: var(--text); word-break: break-word; }
 .status-progress-wrap { margin-top: 0; padding-top: 6px; border-top: 1px solid var(--border); flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .status-progress-wrap.hidden { display: none; }
 .status-progress-heading { margin: 0; font-size: .78rem; color: var(--muted); font-weight: 600; }
@@ -117,4 +134,5 @@ body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-
   .status-card p,.status-card a { font-size: .78rem; }
   .meta-chip { font-size: .74rem; }
   .top-btn { font-size: .78rem; padding: 5px 9px; }
+  .health-grid { grid-template-columns: 1fr; }
 }

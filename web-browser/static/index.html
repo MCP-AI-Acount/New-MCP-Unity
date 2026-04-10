@@ -72,6 +72,7 @@
           <div class="status-tabs-wrap">
             <div class="status-tabs" id="statusTabs" role="tablist">
               <button type="button" class="status-tab active" data-tab="progress">진행 상황</button>
+              <button type="button" class="status-tab" data-tab="manual">메뉴얼</button>
               <button type="button" class="status-tab" data-tab="queue">큐</button>
               <button type="button" class="status-tab" data-tab="n8n">n8n</button>
               <button type="button" class="status-tab" data-tab="service">서비스</button>
@@ -79,6 +80,40 @@
               <button type="button" class="status-tab" data-tab="debug">디버그</button>
               <button type="button" class="status-tab" data-tab="cursorAgent">Cursor</button>
             </div>
+          </div>
+        </section>
+        <section id="manualPanel" class="status-card manual-card hidden" aria-label="운영 메뉴얼">
+          <div class="manual-section">
+            <h4>명령 처리 밴다이어그램</h4>
+            <div class="venn-wrap">
+              <svg class="venn-diagram" viewBox="0 0 540 240" role="img" aria-label="Cloud Run, Cursor Cloud, Mac Agent 동작 겹침">
+                <circle class="venn-circle venn-cloud-run" cx="200" cy="120" r="88"></circle>
+                <circle class="venn-circle venn-cursor" cx="300" cy="120" r="88"></circle>
+                <circle class="venn-circle venn-mac" cx="250" cy="175" r="88"></circle>
+                <text class="venn-text" x="130" y="68">Cloud Run</text>
+                <text class="venn-text" x="332" y="68">Cursor Cloud</text>
+                <text class="venn-text" x="222" y="236">Mac Agent</text>
+                <text class="venn-subtext" x="154" y="116">큐·API</text>
+                <text class="venn-subtext" x="266" y="116">명령 이해</text>
+                <text class="venn-subtext" x="226" y="164">실행·Pull</text>
+                <text class="venn-subtext" x="220" y="126">공유 세션/상태</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="manual-section">
+            <h4>기기별 제한 사항</h4>
+            <ul class="manual-list">
+              <li>아이폰: 화면 꺼짐/앱 전환 시 실시간 폴링 지연 가능, 명령은 Cloud Run 큐 기준으로 유지됨.</li>
+              <li>맥: 실제 로컬 파일 변경·git pull·Unity 실행 담당. launch agent 미동작 시 자동 실행 중단.</li>
+              <li>Cursor Cloud: 저장소 수정/커밋/푸시 담당. 맥 로컬 직접 경로 접근은 SSH 구성 필요.</li>
+              <li>Cloud Run: 요청 수신·상태 집계 중심. 장시간 무거운 Unity 실행은 VM Worker로 위임.</li>
+            </ul>
+          </div>
+
+          <div class="manual-section">
+            <h4>운영 상태 스냅샷</h4>
+            <div id="runtimeSnapshotGrid" class="health-grid"></div>
           </div>
         </section>
 
