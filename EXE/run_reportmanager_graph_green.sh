@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# command: ReportManager SampleScene Canvas/Graph 초록 적용 + 검증 스크린샷
+# command: ReportMaker SampleScene Canvas/Graph 초록 적용 + 검증 스크린샷
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/rules/.env.local}"
@@ -21,7 +21,7 @@ if [[ -z "${CLOUD_RUN_URL:-}" ]]; then
   fi
 fi
 
-PROJECT_NAME="${PROJECT_NAME:-ReportManager}"
+PROJECT_NAME="${PROJECT_NAME:-ReportMaker}"
 SCENE_NAME="${SCENE_NAME:-SampleScene}"
 CANVAS_NAME="${CANVAS_NAME:-Canvas}"
 GRAPH_NAME="${GRAPH_NAME:-Graph}"
