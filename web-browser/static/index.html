@@ -84,21 +84,59 @@
         </section>
         <section id="manualPanel" class="status-card manual-card hidden" aria-label="운영 메뉴얼">
           <div class="manual-section">
-            <h4>명령 처리 밴다이어그램</h4>
+            <h4>실시간 명령 파이프라인</h4>
             <div class="venn-wrap">
-              <svg class="venn-diagram" viewBox="0 0 540 240" role="img" aria-label="Cloud Run, Cursor Cloud, Mac Agent 동작 겹침">
-                <circle class="venn-circle venn-cloud-run" cx="200" cy="120" r="88"></circle>
-                <circle class="venn-circle venn-cursor" cx="300" cy="120" r="88"></circle>
-                <circle class="venn-circle venn-mac" cx="250" cy="175" r="88"></circle>
-                <text class="venn-text" x="130" y="68">Cloud Run</text>
-                <text class="venn-text" x="332" y="68">Cursor Cloud</text>
-                <text class="venn-text" x="222" y="236">Mac Agent</text>
-                <text class="venn-subtext" x="154" y="116">큐·API</text>
-                <text class="venn-subtext" x="266" y="116">명령 이해</text>
-                <text class="venn-subtext" x="226" y="164">실행·Pull</text>
-                <text class="venn-subtext" x="220" y="126">공유 세션/상태</text>
+              <svg class="pipeline-svg" viewBox="0 0 980 220" role="img" aria-label="명령-커서클라우드-클라우드런-VM-Git 실시간 파이프라인">
+                <defs>
+                  <marker id="arrowHead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" class="pipeline-arrow-head"></polygon>
+                  </marker>
+                </defs>
+                <line class="pipeline-link" x1="170" y1="110" x2="215" y2="110"></line>
+                <line class="pipeline-link" x1="360" y1="110" x2="405" y2="110"></line>
+                <line class="pipeline-link" x1="550" y1="110" x2="595" y2="110"></line>
+                <line class="pipeline-link" x1="740" y1="110" x2="785" y2="110"></line>
+
+                <g id="pipelineStage-command">
+                  <rect class="pipeline-node" x="20" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="35" y="96">명령 입력</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-command" x="35" y="118">pending</text>
+                </g>
+
+                <g id="pipelineStage-cursor">
+                  <rect class="pipeline-node" x="210" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="225" y="96">Cursor Cloud</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-cursor" x="225" y="118">idle</text>
+                </g>
+
+                <g id="pipelineStage-cloudrun">
+                  <rect class="pipeline-node" x="400" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="415" y="96">Cloud Run</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-cloudrun" x="415" y="118">idle</text>
+                </g>
+
+                <g id="pipelineStage-vm">
+                  <rect class="pipeline-node" x="590" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="605" y="96">VM Worker</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-vm" x="605" y="118">idle</text>
+                </g>
+
+                <g id="pipelineStage-git">
+                  <rect class="pipeline-node" x="780" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="795" y="96">Git</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-git" x="795" y="118">idle</text>
+                </g>
               </svg>
             </div>
+            <div class="pipeline-legend">
+              <span class="pipeline-badge ok">success</span>
+              <span class="pipeline-badge run">running</span>
+              <span class="pipeline-badge fail">failed</span>
+              <span class="pipeline-badge">pending/idle</span>
+            </div>
+            <p id="pipelineCurrentStage" class="pipeline-meta">현재 단계: -</p>
+            <p id="pipelineCurrentCommand" class="pipeline-meta">현재 명령: -</p>
+            <p id="pipelineLastUpdate" class="pipeline-meta">마지막 갱신: -</p>
           </div>
 
           <div class="manual-section">

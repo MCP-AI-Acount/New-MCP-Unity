@@ -33,6 +33,20 @@ const statusTabs = document.getElementById("statusTabs");
 const statusBodyWrap = document.getElementById("statusBodyWrap");
 const cursorAgentWrap = document.getElementById("cursorAgentWrap");
 const manualPanel = document.getElementById("manualPanel");
+const pipelineCurrentCommand = document.getElementById("pipelineCurrentCommand");
+const pipelineCurrentStep = document.getElementById("pipelineCurrentStep");
+const pipelineNodeCommand = document.getElementById("pipelineNodeCommand");
+const pipelineNodeCursor = document.getElementById("pipelineNodeCursor");
+const pipelineNodeVm = document.getElementById("pipelineNodeVm");
+const pipelineNodeGit = document.getElementById("pipelineNodeGit");
+const pipelineCommandStatus = document.getElementById("pipelineCommandStatus");
+const pipelineCursorStatus = document.getElementById("pipelineCursorStatus");
+const pipelineVmStatus = document.getElementById("pipelineVmStatus");
+const pipelineGitStatus = document.getElementById("pipelineGitStatus");
+const pipelineCommandTs = document.getElementById("pipelineCommandTs");
+const pipelineCursorTs = document.getElementById("pipelineCursorTs");
+const pipelineVmTs = document.getElementById("pipelineVmTs");
+const pipelineGitTs = document.getElementById("pipelineGitTs");
 const statusMainTitle = document.getElementById("statusMainTitle");
 const statusMainText = document.getElementById("statusMainText");
 const statusMainLink = document.getElementById("statusMainLink");
@@ -271,6 +285,65 @@ async function loadStatusQueue() {
 
 async function loadStatusFull() {
   return apiGet(`/api/status${statusQuery({ include_services: "true", include_n8n: "true" })}`);
+}
+
+async function loadPipelineSnapshot() {
+  return apiGet("/api/pipeline-state");
+}
+
+function setNodeVisual(groupEl, state) {
+  if (!groupEl) return;
+  const rect = groupEl.querySelector("rect");
+  if (!rect) return;
+  rect.classList.remove("pipeline-node-pending", "pipeline-node-running", "pipeline-node-success", "pipeline-node-failed");
+  if (state === "running") rect.classList.add("pipeline-node-running");
+  else if (state === "success") rect.classList.add("pipeline-node-success");
+  else if (state === "failed") rect.classList.add("pipeline-node-failed");
+  else rect.classList.add("pipeline-node-pending");
+}
+
+function setStatusText(el, status, ts) {
+  if (!el) return;
+  el.textContent = `상태: ${status || "-"}`;
+  if (ts) {
+    const tsEl =
+      el === pipelineCommandStatus ? pipelineCommandTs :
+      el === pipelineCursorStatus ? pipelineCursorTs :
+      el === pipelineVmStatus ? pipelineVmTs :
+      el === pipelineGitStatus ? pipelineGitTs : null;
+    if (tsEl) tsEl.textContent = ts;
+  }
+}
+
+async function refreshPipelineSnapshot() {
+  try {
+    const res = await loadPipelineSnapshot();
+    const snap = res.pipeline || {};
+    const nodeMap = {};
+    (snap.nodes || []).forEach((n) => {
+      nodeMap[n.id] = n;
+    });
+
+    if (pipelineCurrentCommand) {
+      pipelineCurrentCommand.textContent = `현재 명령: ${snap.currentCommand || "-"}`;
+    }
+    if (pipelineCurrentStep) {
+      pipelineCurrentStep.textContent = `현재 단계: ${snap.currentStage || "-"} (${snap.belongsTo || "일반"})`;
+    }
+
+    setNodeVisual(pipelineNodeCommand, nodeMap.command?.state);
+    setNodeVisual(pipelineNodeCursor, nodeMap.cursor?.state);
+    setNodeVisual(pipelineNodeVm, nodeMap.vm?.state);
+    setNodeVisual(pipelineNodeGit, nodeMap.git?.state);
+
+    setStatusText(pipelineCommandStatus, nodeMap.command?.state || "pending", snap.updatedAt || "-");
+    setStatusText(pipelineCursorStatus, nodeMap.cursor?.state || "idle", snap.updatedAt || "-");
+    setStatusText(pipelineVmStatus, nodeMap.vm?.state || "unknown", snap.updatedAt || "-");
+    setStatusText(pipelineGitStatus, nodeMap.git?.state || "unknown", snap.updatedAt || "-");
+  } catch (_e) {
+    if (pipelineCurrentCommand) pipelineCurrentCommand.textContent = "현재 명령: -";
+    if (pipelineCurrentStep) pipelineCurrentStep.textContent = "현재 단계: -";
+  }
 }
 
 async function loadActiveProject() {
@@ -612,5 +685,9 @@ statusTabs.onclick = (e) => {
   await loadHistory().catch(() => {});
   await loadQueue().catch(() => {});
   await loadActiveProject().catch(() => {});
+  await refreshPipelineSnapshot().catch(() => {});
+  setInterval(() => {
+    refreshPipelineSnapshot().catch(() => {});
+  }, 4000);
   setActiveStatusTab("progress");
 })();

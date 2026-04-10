@@ -67,6 +67,29 @@ body { margin: 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-
 .health-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--panel-2); }
 .health-label { font-size: .72rem; color: var(--muted); margin-bottom: 4px; }
 .health-value { font-size: .78rem; color: var(--text); word-break: break-word; }
+.pipeline-legend { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.pipeline-badge { border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px; font-size: .68rem; color: var(--muted); }
+.pipeline-badge.ok { border-color: #2fcf8f; color: #2fcf8f; }
+.pipeline-badge.fail { border-color: #ff6b6b; color: #ff6b6b; }
+.pipeline-badge.run { border-color: #ffd166; color: #ffd166; }
+.pipeline-svg-wrap { overflow-x: auto; }
+.pipeline-svg { width: min(980px, 100%); height: 220px; display: block; margin: 0 auto; }
+.pipeline-node { fill: rgba(255,255,255,0.04); stroke: var(--border); stroke-width: 1.2; rx: 12; ry: 12; }
+.pipeline-node-text { fill: var(--text); font-size: 12px; font-weight: 600; }
+.pipeline-node-sub { fill: var(--muted); font-size: 11px; }
+.pipeline-node.ok { stroke: #2fcf8f; }
+.pipeline-node.fail { stroke: #ff6b6b; }
+.pipeline-node.run { stroke: #ffd166; }
+.pipeline-link { stroke: #4f7cff; stroke-width: 2; marker-end: url(#arrowHead); opacity: .8; }
+.pipeline-link.off { opacity: .25; }
+.pipeline-meta { margin-top: 8px; font-size: .74rem; color: var(--muted); }
+.pipeline-arrow { stroke: #6d8dff; stroke-width: 2.2; marker-end: url(#arrowHead); opacity: .85; }
+.pipeline-arrow-head { fill: #6d8dff; }
+.pipeline-stage { transition: fill .2s ease, stroke .2s ease; }
+.pipeline-stage.stage-pending { fill: rgba(255,255,255,0.04); stroke: var(--border); }
+.pipeline-stage.stage-running { fill: rgba(255, 209, 102, 0.20); stroke: #ffd166; }
+.pipeline-stage.stage-success { fill: rgba(47, 207, 143, 0.20); stroke: #2fcf8f; }
+.pipeline-stage.stage-failed { fill: rgba(255, 107, 107, 0.20); stroke: #ff6b6b; }
 .status-progress-wrap { margin-top: 0; padding-top: 6px; border-top: 1px solid var(--border); flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .status-progress-wrap.hidden { display: none; }
 .status-progress-heading { margin: 0; font-size: .78rem; color: var(--muted); font-weight: 600; }

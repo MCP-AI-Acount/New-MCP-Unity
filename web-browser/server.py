@@ -220,6 +220,137 @@ def _runtime_snapshot(status: Dict[str, Any]) -> Dict[str, Any]:
   }
 
 
+def _queue_status_bucket(raw_status: str) -> str:
+  s = (raw_status or "").strip().lower()
+  if s in {"queued", "pending"}:
+    return "queued"
+  if s in {"sent", "running", "in_progress"}:
+    return "running"
+  if s in {"success", "completed", "done", "ok"}:
+    return "success"
+  if s in {"failed", "error"}:
+    return "failed"
+  return "unknown"
+
+
+def _classify_command_flow(command_text: str) -> str:
+  c = (command_text or "").strip().lower()
+  if any(k in c for k in ["unity", "sample", "scene", "graph", "play_and_capture", "reportmaker"]):
+    return "unity-vm"
+  if any(k in c for k in ["git ", " onepush", "onepush", "push", "pull", "commit", "branch"]):
+    return "git-sync"
+  return "general"
+
+
+def _pick_current_queue_item(queue_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+  def _sort_key(x: Dict[str, Any]) -> str:
+    return str(x.get("createdAt", ""))
+
+  running = [x for x in queue_items if _queue_status_bucket(str(x.get("status", ""))) == "running"]
+  if running:
+    return sorted(running, key=_sort_key, reverse=True)[0]
+
+  queued = [x for x in queue_items if _queue_status_bucket(str(x.get("status", ""))) == "queued"]
+  if queued:
+    return sorted(queued, key=_sort_key, reverse=True)[0]
+
+  if queue_items:
+    return sorted(queue_items, key=_sort_key, reverse=True)[0]
+
+  return {}
+
+
+def _pipeline_state(status: Dict[str, Any], queue_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+  current = _pick_current_queue_item(queue_items)
+  command_text = str(current.get("command", ""))
+  raw_status = str(current.get("status", ""))
+  bucket = _queue_status_bucket(raw_status)
+  flow = _classify_command_flow(command_text)
+
+  nodes = [
+    {"id": "command", "label": "명령 입력", "state": "idle"},
+    {"id": "cursor", "label": "Cursor Cloud", "state": "idle"},
+    {"id": "cloudrun", "label": "Cloud Run", "state": "idle"},
+    {"id": "vm", "label": "VM Worker", "state": "idle"},
+    {"id": "git", "label": "Git 동기화", "state": "idle"},
+  ]
+  node_map = {x["id"]: x for x in nodes}
+
+  current_stage = "idle"
+  belongs_to = "일반"
+  if flow == "unity-vm":
+    belongs_to = "Unity/VM"
+  elif flow == "git-sync":
+    belongs_to = "Git"
+
+  if current:
+    node_map["command"]["state"] = "success"
+    if bucket == "queued":
+      node_map["cursor"]["state"] = "running"
+      node_map["cloudrun"]["state"] = "pending"
+      node_map["vm"]["state"] = "pending" if flow == "unity-vm" else "idle"
+      node_map["git"]["state"] = "pending" if flow == "git-sync" else "idle"
+      current_stage = "cursor"
+    elif bucket == "running":
+      node_map["cursor"]["state"] = "success"
+      node_map["cloudrun"]["state"] = "running"
+      if flow == "unity-vm":
+        node_map["vm"]["state"] = "running"
+        current_stage = "vm"
+      elif flow == "git-sync":
+        node_map["git"]["state"] = "running"
+        current_stage = "git"
+      else:
+        current_stage = "cloudrun"
+    elif bucket == "success":
+      node_map["cursor"]["state"] = "success"
+      node_map["cloudrun"]["state"] = "success"
+      if flow == "unity-vm":
+        node_map["vm"]["state"] = "success"
+      if flow == "git-sync":
+        node_map["git"]["state"] = "success"
+      current_stage = "done"
+    elif bucket == "failed":
+      node_map["cursor"]["state"] = "success"
+      node_map["cloudrun"]["state"] = "failed"
+      if flow == "unity-vm":
+        node_map["vm"]["state"] = "failed"
+        current_stage = "vm"
+      elif flow == "git-sync":
+        node_map["git"]["state"] = "failed"
+        current_stage = "git"
+      else:
+        current_stage = "cloudrun"
+
+  cloud_run_down = "down" in str(status.get("cloudRun", "")).lower()
+  vm_down = "down" in str(status.get("unityWorker", "")).lower()
+  if cloud_run_down and node_map["cloudrun"]["state"] in {"running", "pending", "idle"}:
+    node_map["cloudrun"]["state"] = "failed"
+  if vm_down and flow == "unity-vm" and node_map["vm"]["state"] in {"running", "pending", "idle"}:
+    node_map["vm"]["state"] = "failed"
+
+  return {
+    "currentCommand": command_text,
+    "rawStatus": raw_status,
+    "statusBucket": bucket,
+    "belongsTo": belongs_to,
+    "currentStage": current_stage,
+    "nodes": nodes,
+  }
+
+
+def _stage_label(stage: str) -> str:
+  mapping = {
+    "idle": "대기",
+    "cursor": "Cursor Cloud",
+    "cloudrun": "Cloud Run",
+    "vm": "VM Worker",
+    "git": "Git 동기화",
+    "done": "완료",
+  }
+  return mapping.get(stage, stage or "-")
+
+
 app = FastAPI(title="remote-dev-web-browser")
 app.add_middleware(
   CORSMiddleware,
@@ -761,3 +892,29 @@ def runtime_snapshot(include_services: bool = Query(default=True), include_n8n: 
       status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
 
   return {"ok": True, "snapshot": _runtime_snapshot(status)}
+
+
+@app.get("/api/pipeline-state")
+def pipeline_state(include_services: bool = Query(default=True), include_n8n: bool = Query(default=False)) -> Dict[str, Any]:
+  status = _read_json(STATUS_FILE, {})
+  queue_items = _read_json(QUEUE_FILE, [])
+
+  if include_services:
+    cloud_run_health_url = _effective_setting("cloudRunHealthUrl", "CLOUD_RUN_HEALTH_URL", "")
+    unity_worker_health_url = _effective_setting("unityWorkerHealthUrl", "UNITY_WORKER_HEALTH_URL", "")
+    if cloud_run_health_url:
+      res = _get_url_json(cloud_run_health_url)
+      status["cloudRun"] = f"Cloud Run: {'healthy' if res['ok'] else 'down'}"
+    if unity_worker_health_url:
+      res = _get_url_json(unity_worker_health_url)
+      status["unityWorker"] = f"Unity Worker: {'healthy' if res['ok'] else 'down'}"
+
+  if include_n8n:
+    n8n_status_url = _effective_setting("n8nStatusUrl", "N8N_STATUS_URL", "")
+    if n8n_status_url:
+      res = _get_url_json(n8n_status_url)
+      status.setdefault("n8n", {})
+      status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
+      status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+  return {"ok": True, "pipeline": _pipeline_state(status, queue_items)}
