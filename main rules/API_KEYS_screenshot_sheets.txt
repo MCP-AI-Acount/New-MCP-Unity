@@ -7,12 +7,12 @@
 - 본인 계정으로 만든 시트에 본인 토큰으로 쓰면 됨 (공유 시트는 해당 계정에 편집 권한 필요)
 
 ## OCR (Tesseract)
-- Python: `Pillow`, `pytesseract` (rules/packages.txt)
+- Python: `Pillow`, `pytesseract` (main rules/packages.txt)
 - 시스템: macOS 예) `brew install tesseract tesseract-lang`
 - 한글 인식: `OCR_TESSERACT_LANG=kor+eng` (기본값). 한글 팩 없으면 `eng` 만으로 시도
 
 ## 템플릿 JSON
-- `rules/sheets_ocr_template.example.json` 참고: `columns`, `extract`(정규식), `append_range`(예: 시트1!A:Z)
+- `main rules/sheets_ocr_template.example.json` 참고: `columns`, `extract`(정규식), `append_range`(예: 시트1!A:Z)
 - 스크린샷 글자/레이아웃에 맞게 **패턴을 직접 조정**해야 함 (OCR 오인식 시 규칙 완화·키워드 변경)
 
 ## CLI

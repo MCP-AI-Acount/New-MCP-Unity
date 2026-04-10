@@ -4,8 +4,8 @@
 
 | 실행 방식 | 설정 위치 |
 |-----------|-----------|
-| **로컬** (`uvicorn` 등) | 저장소 루트 `rules/.env.local` — 서버가 자동 로드 (git 제외) |
-| **Cloud Run** (배포 URL) | **반드시** Cloud Run 서비스 **환경 변수** `GEMINI_API_KEY` — Docker 이미지에 `rules/`가 없어 `.env.local`만으로는 배포에 적용 안 됨 |
+| **로컬** (`uvicorn` 등) | 저장소 루트 `main rules/.env.local` — 서버가 자동 로드 (git 제외) |
+| **Cloud Run** (배포 URL) | **반드시** Cloud Run 서비스 **환경 변수** `GEMINI_API_KEY` — Docker 이미지에 `main rules/`가 없어 `.env.local`만으로는 배포에 적용 안 됨 |
 
 키를 새로 받았으면 **로컬용 파일과 Cloud Run 둘 다** 맞춰 줄 것.
 

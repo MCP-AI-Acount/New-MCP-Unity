@@ -63,7 +63,7 @@ curl -X POST "https://<cloud-run-url>/v1/tasks/run" \
     "request_id":"mobile-test-1",
     "task_type":"screenshot_to_sheet",
     "image_path":"temp/capture.png",
-    "template_path":"rules/sheets_ocr_template.example.json",
+    "template_path":"main rules/sheets_ocr_template.example.json",
     "spreadsheet_id":"<SPREADSHEET_ID>",
     "dry_run": true
   }'

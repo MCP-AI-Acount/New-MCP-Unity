@@ -7,7 +7,7 @@
 
 ## 1) 환경변수 준비
 
-`rules/.env.local` 또는 맥 셸 환경에 아래 값 설정:
+`main rules/.env.local` 또는 맥 셸 환경에 아래 값 설정:
 
 ```bash
 CLOUD_RUN_URL=https://<your-cloud-run-url>

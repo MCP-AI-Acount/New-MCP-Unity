@@ -4,7 +4,7 @@ set -euo pipefail
 # command: ReportMaker SampleScene Canvas/Graph 초록 적용 + 검증 스크린샷
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-ENV_FILE="${ENV_FILE:-$REPO_ROOT/rules/.env.local}"
+ENV_FILE="${ENV_FILE:-$REPO_ROOT/\"main rules\"/.env.local}"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a

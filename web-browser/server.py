@@ -37,7 +37,7 @@ def _load_env_file(path: str) -> None:
         os.environ[k] = v
 
 
-_load_env_file(os.path.join(_REPO_ROOT, "rules", ".env.local"))
+_load_env_file(os.path.join(_REPO_ROOT, "main rules", ".env.local"))
 _load_env_file(os.path.join(ROOT, ".env"))
 
 SESSIONS_FILE = os.path.join(DATA_DIR, "chat_sessions.json")

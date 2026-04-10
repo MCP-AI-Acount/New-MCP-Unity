@@ -19,7 +19,7 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
-rules/.env.local
+main rules/.env.local
 *.pem
 *.key
 *credentials*.json

@@ -12,7 +12,7 @@ MCP 서버·연동 스크립트·웹 대시보드(`web-browser`)·클라우드 �
 | `collaboration/` | 다중 연동 파이프라인 |
 | `common/` | 공용 유틸 (`load_secrets.sh` 포함) |
 | `EXE/` | 실행 엔트리 (`run_news_to_comic_ppt.sh`, `start_n8n.sh`, mac 자동화 등) |
-| `rules/` | 규칙·패키지 목록·API 키 안내 (시크릿은 커밋하지 않음) |
+| `main rules/` | 규칙·패키지 목록·API 키 안내 (시크릿은 커밋하지 않음) |
 | `web-browser/` | FastAPI 기반 로컬/배포용 대시보드 |
 | `temp/` | 1회성 프롬프트 대응 파일 |
 
@@ -23,7 +23,7 @@ MCP 서버·연동 스크립트·웹 대시보드(`web-browser`)·클라우드 �
 - 권장: `/home/ubuntu/.config/agent-secrets.env`
 - 테스트: `temp/agent-secrets.env`
 
-`rules/API_KEYS_NOTE.txt` 참고.
+`main rules/API_KEYS_NOTE.txt` 참고.
 
 실행:
 
