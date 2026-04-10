@@ -3,7 +3,7 @@
 # curl -X POST "https://<cloud-run-url>/v1/tasks/run" \
 #   -H "Authorization: Bearer <REMOTE_API_BEARER_TOKEN>" \
 #   -H "Content-Type: application/json" \
-#   -d '{"request_id":"req-1","task_type":"screenshot_to_sheet","image_path":"temp/capture.png","template_path":"rules/sheets_ocr_template.example.json","spreadsheet_id":"<id>","dry_run":false}'
+#   -d '{"request_id":"req-1","task_type":"screenshot_to_sheet","image_path":"temp/capture.png","template_path":"main rules/sheets_ocr_template.example.json","spreadsheet_id":"<id>","dry_run":false}'
 
 import argparse
 import json

@@ -19,7 +19,7 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
-rules/.env.local
+main rules/.env.local
 *.pem
 *.key
 *credentials*.json
@@ -55,3 +55,7 @@ secrets/
 *.p8
 temp/agent-secrets.env
 temp/news_to_comic/
+
+# user secret vault
+\# you/keys.env
+#+#+#+#+assistant to=functions.ApplyPatch մեկնաբանություն code

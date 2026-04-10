@@ -2,13 +2,17 @@
 import json
 import os
 import random
+import subprocess
+import sys
+import threading
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 from urllib import error, parse, request
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -18,6 +22,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(ROOT, "data")
 STATIC_DIR = os.path.join(ROOT, "static")
 _REPO_ROOT = os.path.dirname(ROOT)
+if _REPO_ROOT not in sys.path:
+  sys.path.insert(0, _REPO_ROOT)
 
 
 def _load_env_file(path: str) -> None:
@@ -36,7 +42,7 @@ def _load_env_file(path: str) -> None:
         os.environ[k] = v
 
 
-_load_env_file(os.path.join(_REPO_ROOT, "rules", ".env.local"))
+_load_env_file(os.path.join(_REPO_ROOT, "main rules", ".env.local"))
 _load_env_file(os.path.join(ROOT, ".env"))
 
 SESSIONS_FILE = os.path.join(DATA_DIR, "chat_sessions.json")
@@ -45,21 +51,233 @@ STATUS_FILE = os.path.join(DATA_DIR, "status.json")
 QUEUE_FILE = os.path.join(DATA_DIR, "command_queue.json")
 SITE_CONFIG_FILE = os.path.join(DATA_DIR, "site_config.json")
 CURSOR_RULES_FILE = os.environ.get(
-  "CURSOR_RULES_FILE", os.path.join(DATA_DIR, "cursor_top_rules.md")
+  "CURSOR_RULES_FILE", os.path.join(_REPO_ROOT, ".cursor", "rules", "cursor_top_rules.md")
 )
+WEB_CURSOR_RULES_FILE = os.path.join(DATA_DIR, "cursor_top_rules.md")
+RULES_SYNC_INTERVAL_SECONDS = max(1, int(os.environ.get("RULES_SYNC_INTERVAL_SECONDS", "2") or "2"))
+STATIC_ASSET_BASE_URL = (os.environ.get("STATIC_ASSET_BASE_URL", "") or "").strip().rstrip("/")
+BRIDGE_CHAT_SYNC_ENABLED = (os.environ.get("BRIDGE_CHAT_SYNC_ENABLED", "true") or "true").strip().lower() in {
+  "1",
+  "true",
+  "yes",
+  "on",
+}
+
+try:
+  from common.bridge_store import list_messages as bridge_list_messages  # type: ignore
+  from common.bridge_store import push_message as bridge_push_message  # type: ignore
+except Exception:
+  bridge_list_messages = None
+  bridge_push_message = None
+
+
+class _DashboardStore:
+  def __init__(self) -> None:
+    self._lock = threading.Lock()
+    self._backend = "file"
+    self._firestore_client = None
+    self._collection = os.environ.get("WEB_STORE_COLLECTION", "web_dashboard_state")
+    mode = (os.environ.get("WEB_STORE_MODE", "auto") or "auto").strip().lower()
+    if mode == "file":
+      return
+    try:
+      from google.cloud import firestore  # type: ignore
+
+      project_id = (
+        os.environ.get("GOOGLE_CLOUD_PROJECT")
+        or os.environ.get("GCP_PROJECT")
+        or os.environ.get("PROJECT_ID")
+        or ""
+      )
+      self._firestore_client = firestore.Client(project=project_id or None)
+      self._backend = "firestore"
+    except Exception as e:
+      if mode == "firestore":
+        raise RuntimeError("WEB_STORE_MODE=firestore 이지만 Firestore 연결에 실패했습니다.") from e
+      self._firestore_client = None
+      self._backend = "file"
+
+  @property
+  def backend(self) -> str:
+    return self._backend
+
+  @staticmethod
+  def _key_from_path(path: str) -> str:
+    base = os.path.basename(path)
+    name, _ = os.path.splitext(base)
+    return name or base or "unknown"
+
+  def _read_file_json(self, path: str, default: Any) -> Any:
+    if not os.path.isfile(path):
+      return default
+    with self._lock:
+      try:
+        with open(path, encoding="utf-8") as f:
+          return json.load(f)
+      except Exception:
+        return default
+
+  def _write_file_json(self, path: str, data: Any) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+      os.makedirs(parent, exist_ok=True)
+    tmp_path = f"{path}.tmp-{os.getpid()}-{threading.get_ident()}"
+    with self._lock:
+      with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+      os.replace(tmp_path, path)
+
+  def read_json(self, path: str, default: Any) -> Any:
+    if self._firestore_client is not None:
+      try:
+        key = self._key_from_path(path)
+        snap = self._firestore_client.collection(self._collection).document(key).get()
+        if snap.exists:
+          payload = snap.to_dict() or {}
+          if "value" in payload:
+            return payload["value"]
+      except Exception:
+        pass
+    return self._read_file_json(path, default)
+
+  def write_json(self, path: str, data: Any) -> None:
+    if self._firestore_client is not None:
+      try:
+        key = self._key_from_path(path)
+        self._firestore_client.collection(self._collection).document(key).set(
+          {
+            "key": key,
+            "value": data,
+            "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+          }
+        )
+      except Exception:
+        pass
+    self._write_file_json(path, data)
+
+
+_STORE = _DashboardStore()
+_rules_sync_last_signature = ""
+_rules_sync_thread_started = False
+_rules_sync_thread_lock = threading.Lock()
+
+
+def _rules_signature() -> str:
+  targets = _rules_sync_targets()
+  parts: List[str] = []
+  for path in targets:
+    if not path:
+      continue
+    mtime = _safe_mtime(path)
+    size = -1
+    try:
+      size = os.path.getsize(path)
+    except OSError:
+      size = -1
+    parts.append(f"{path}|{mtime}|{size}")
+  return "||".join(parts)
+
+
+def _rules_sync_if_changed(force: bool = False) -> Dict[str, Any]:
+  global _rules_sync_last_signature
+  current_signature = _rules_signature()
+  if not force and current_signature == _rules_sync_last_signature:
+    return {
+      "changed": False,
+      "sourcePath": "",
+      "writtenPaths": [],
+      "content": "",
+    }
+  synced = _sync_rules_files()
+  _rules_sync_last_signature = _rules_signature()
+  synced["changed"] = True
+  return synced
+
+
+def _rules_sync_daemon() -> None:
+  while True:
+    try:
+      _rules_sync_if_changed(force=False)
+    except Exception:
+      pass
+    time.sleep(RULES_SYNC_INTERVAL_SECONDS)
+
+
+def _start_rules_sync_background() -> None:
+  global _rules_sync_thread_started
+  with _rules_sync_thread_lock:
+    if _rules_sync_thread_started:
+      return
+    # Uvicorn reload/worker 환경에서도 중복 실행 영향을 최소화하기 위해 daemon thread 사용.
+    thread = threading.Thread(target=_rules_sync_daemon, name="rules-sync-daemon", daemon=True)
+    thread.start()
+    _rules_sync_thread_started = True
 
 
 def _read_json(path: str, default: Any) -> Any:
-  if not os.path.isfile(path):
-    return default
-  with open(path, encoding="utf-8") as f:
-    return json.load(f)
+  return _STORE.read_json(path, default)
 
 
 def _write_json(path: str, data: Any) -> None:
-  os.makedirs(os.path.dirname(path), exist_ok=True)
-  with open(path, "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+  _STORE.write_json(path, data)
+
+
+def _read_text(path: str, default: str = "") -> str:
+  if not os.path.isfile(path):
+    return default
+  try:
+    with open(path, encoding="utf-8") as f:
+      return f.read()
+  except OSError:
+    return default
+
+
+def _write_text(path: str, content: str) -> bool:
+  try:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+      f.write(content)
+    return True
+  except OSError:
+    return False
+
+
+def _rules_sync_targets() -> List[str]:
+  raw = [
+    CURSOR_RULES_FILE,
+    os.path.join(_REPO_ROOT, ".cursor", "rules", "cursor_top_rules.md"),
+    WEB_CURSOR_RULES_FILE,
+  ]
+  out: List[str] = []
+  for path in raw:
+    if path and path not in out:
+      out.append(path)
+  return out
+
+
+def _safe_mtime(path: str) -> float:
+  try:
+    return os.path.getmtime(path)
+  except OSError:
+    return -1.0
+
+
+def _sync_rules_files() -> Dict[str, Any]:
+  targets = _rules_sync_targets()
+  existing = [p for p in targets if os.path.isfile(p)]
+  source_path = max(existing, key=_safe_mtime) if existing else targets[0]
+  content = _read_text(source_path, "") if source_path else ""
+  written_paths: List[str] = []
+  for path in targets:
+    if not path:
+      continue
+    if _write_text(path, content):
+      written_paths.append(path)
+  return {
+    "sourcePath": source_path,
+    "writtenPaths": written_paths,
+    "content": content,
+  }
 
 
 def _site_config() -> Dict[str, Any]:
@@ -178,6 +396,182 @@ def _get_url_json(url: str, timeout: int = 10) -> Dict[str, Any]:
     return {"ok": False, "status": 0, "body": ""}
 
 
+def _run_cmd(args: List[str], timeout: int = 8) -> Dict[str, Any]:
+  try:
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    return {
+      "ok": proc.returncode == 0,
+      "returncode": proc.returncode,
+      "stdout": (proc.stdout or "").strip(),
+      "stderr": (proc.stderr or "").strip(),
+    }
+  except Exception as e:
+    return {"ok": False, "returncode": -1, "stdout": "", "stderr": str(e)}
+
+
+def _git_runtime_status() -> Dict[str, Any]:
+  git_dir = os.path.join(_REPO_ROOT, ".git")
+  if not os.path.isdir(git_dir):
+    return {"available": False, "branch": "-", "lastCommit": "-", "dirty": False}
+
+  branch_out = _run_cmd(["git", "-C", _REPO_ROOT, "branch", "--show-current"])
+  commit_out = _run_cmd(["git", "-C", _REPO_ROOT, "log", "--oneline", "-n", "1"])
+  dirty_out = _run_cmd(["git", "-C", _REPO_ROOT, "status", "--porcelain"])
+  return {
+    "available": True,
+    "branch": branch_out["stdout"] or "-",
+    "lastCommit": commit_out["stdout"] or "-",
+    "dirty": bool(dirty_out["stdout"]),
+  }
+
+
+def _runtime_snapshot(status: Dict[str, Any]) -> Dict[str, Any]:
+  return {
+    "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "storeBackend": _STORE.backend,
+    "staticAssetBaseUrl": STATIC_ASSET_BASE_URL or "(builtin:/static)",
+    "vmPolicy": "idle 5분(300초) 무입력 시 자동 중지 목표",
+    "cloudRunGateway": "Cloud Run Gateway: healthy",
+    "cloudRunTarget": status.get("cloudRun") or "Cloud Run: unknown",
+    "unityWorker": status.get("unityWorker") or "Unity Worker: unknown",
+    "n8n": (status.get("n8n") or {}).get("lastResult", "unknown"),
+    "git": _git_runtime_status(),
+  }
+
+
+def _queue_status_bucket(raw_status: str) -> str:
+  s = (raw_status or "").strip().lower()
+  if s in {"queued", "pending"}:
+    return "queued"
+  if s in {"sent", "running", "in_progress"}:
+    return "running"
+  if s in {"success", "completed", "done", "ok"}:
+    return "success"
+  if s in {"failed", "error"}:
+    return "failed"
+  return "unknown"
+
+
+def _classify_command_flow(command_text: str) -> str:
+  c = (command_text or "").strip().lower()
+  if any(k in c for k in ["unity", "sample", "scene", "graph", "play_and_capture", "reportmaker"]):
+    return "unity-vm"
+  if any(k in c for k in ["git ", " onepush", "onepush", "push", "pull", "commit", "branch"]):
+    return "git-sync"
+  return "general"
+
+
+def _pick_current_queue_item(queue_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+  def _sort_key(x: Dict[str, Any]) -> str:
+    return str(x.get("createdAt", ""))
+
+  running = [x for x in queue_items if _queue_status_bucket(str(x.get("status", ""))) == "running"]
+  if running:
+    return sorted(running, key=_sort_key, reverse=True)[0]
+
+  queued = [x for x in queue_items if _queue_status_bucket(str(x.get("status", ""))) == "queued"]
+  if queued:
+    return sorted(queued, key=_sort_key, reverse=True)[0]
+
+  if queue_items:
+    return sorted(queue_items, key=_sort_key, reverse=True)[0]
+
+  return {}
+
+
+def _pipeline_state(status: Dict[str, Any], queue_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+  current = _pick_current_queue_item(queue_items)
+  command_text = str(current.get("command", ""))
+  raw_status = str(current.get("status", ""))
+  bucket = _queue_status_bucket(raw_status)
+  flow = _classify_command_flow(command_text)
+
+  nodes = [
+    {"id": "command", "label": "명령 입력", "state": "idle"},
+    {"id": "cursor", "label": "Cursor Cloud", "state": "idle"},
+    {"id": "cloudrun", "label": "Cloud Run", "state": "idle"},
+    {"id": "vm", "label": "VM Worker", "state": "idle"},
+    {"id": "git", "label": "Git 동기화", "state": "idle"},
+  ]
+  node_map = {x["id"]: x for x in nodes}
+
+  current_stage = "idle"
+  belongs_to = "일반"
+  if flow == "unity-vm":
+    belongs_to = "Unity/VM"
+  elif flow == "git-sync":
+    belongs_to = "Git"
+
+  if current:
+    node_map["command"]["state"] = "success"
+    if bucket == "queued":
+      node_map["cursor"]["state"] = "running"
+      node_map["cloudrun"]["state"] = "pending"
+      node_map["vm"]["state"] = "pending" if flow == "unity-vm" else "idle"
+      node_map["git"]["state"] = "pending" if flow == "git-sync" else "idle"
+      current_stage = "cursor"
+    elif bucket == "running":
+      node_map["cursor"]["state"] = "success"
+      node_map["cloudrun"]["state"] = "running"
+      if flow == "unity-vm":
+        node_map["vm"]["state"] = "running"
+        current_stage = "vm"
+      elif flow == "git-sync":
+        node_map["git"]["state"] = "running"
+        current_stage = "git"
+      else:
+        current_stage = "cloudrun"
+    elif bucket == "success":
+      node_map["cursor"]["state"] = "success"
+      node_map["cloudrun"]["state"] = "success"
+      if flow == "unity-vm":
+        node_map["vm"]["state"] = "success"
+      if flow == "git-sync":
+        node_map["git"]["state"] = "success"
+      current_stage = "done"
+    elif bucket == "failed":
+      node_map["cursor"]["state"] = "success"
+      node_map["cloudrun"]["state"] = "failed"
+      if flow == "unity-vm":
+        node_map["vm"]["state"] = "failed"
+        current_stage = "vm"
+      elif flow == "git-sync":
+        node_map["git"]["state"] = "failed"
+        current_stage = "git"
+      else:
+        current_stage = "cloudrun"
+
+  cloud_run_down = "down" in str(status.get("cloudRun", "")).lower()
+  vm_down = "down" in str(status.get("unityWorker", "")).lower()
+  if cloud_run_down and node_map["cloudrun"]["state"] in {"running", "pending", "idle"}:
+    node_map["cloudrun"]["state"] = "failed"
+  if vm_down and flow == "unity-vm" and node_map["vm"]["state"] in {"running", "pending", "idle"}:
+    node_map["vm"]["state"] = "failed"
+
+  return {
+    "currentCommand": command_text,
+    "rawStatus": raw_status,
+    "statusBucket": bucket,
+    "belongsTo": belongs_to,
+    "currentStage": current_stage,
+    "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "storeBackend": _STORE.backend,
+    "nodes": nodes,
+  }
+
+
+def _stage_label(stage: str) -> str:
+  mapping = {
+    "idle": "대기",
+    "cursor": "Cursor Cloud",
+    "cloudrun": "Cloud Run",
+    "vm": "VM Worker",
+    "git": "Git 동기화",
+    "done": "완료",
+  }
+  return mapping.get(stage, stage or "-")
+
+
 app = FastAPI(title="remote-dev-web-browser")
 app.add_middleware(
   CORSMiddleware,
@@ -196,7 +590,30 @@ class ClipboardPermissionsMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(ClipboardPermissionsMiddleware)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/static/{asset_path:path}")
+def static_asset(asset_path: str):
+  if STATIC_ASSET_BASE_URL:
+    raise HTTPException(status_code=404, detail="static assets are served by external CDN")
+  static_root = os.path.realpath(STATIC_DIR)
+  target_path = os.path.realpath(os.path.join(STATIC_DIR, asset_path))
+  if not (target_path == static_root or target_path.startswith(static_root + os.sep)):
+    raise HTTPException(status_code=403, detail="invalid static asset path")
+  if not os.path.isfile(target_path):
+    raise HTTPException(status_code=404, detail="asset not found")
+  response = FileResponse(target_path)
+  lowered = target_path.lower()
+  if lowered.endswith(".html"):
+    response.headers["Cache-Control"] = "public, max-age=60"
+  else:
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+  response.headers["X-Content-Type-Options"] = "nosniff"
+  return response
+
+@app.on_event("startup")
+def _startup_rules_sync() -> None:
+  _rules_sync_if_changed(force=True)
+  _start_rules_sync_background()
 
 
 class MessageIn(BaseModel):
@@ -240,6 +657,16 @@ def _append_message(session_id: str, role: str, text: str) -> None:
   messages = _read_json(MESSAGES_FILE, [])
   messages.append({"sessionId": session_id, "role": role, "text": text})
   _write_json(MESSAGES_FILE, messages)
+  if BRIDGE_CHAT_SYNC_ENABLED and bridge_push_message is not None:
+    try:
+      bridge_push_message(
+        role=role,
+        text=text,
+        source="web-browser",
+        session_id=session_id,
+      )
+    except Exception:
+      pass
 
 
 def _touch_session(session_id: str) -> None:
@@ -274,8 +701,24 @@ def _system_prompt_for_chat() -> str:
 
 
 def _session_messages_for_llm(session_id: str) -> List[Dict[str, str]]:
-  allm = _read_json(MESSAGES_FILE, [])
-  sess = [m for m in allm if m.get("sessionId") == session_id]
+  sess: List[Dict[str, Any]] = []
+  if BRIDGE_CHAT_SYNC_ENABLED and bridge_list_messages is not None:
+    try:
+      bridge_items = bridge_list_messages(limit=200, session_id=session_id)
+      if isinstance(bridge_items, list) and bridge_items:
+        sess = [
+          {
+            "sessionId": session_id,
+            "role": str(m.get("role", "user")),
+            "text": str(m.get("text", "")),
+          }
+          for m in bridge_items
+        ]
+    except Exception:
+      sess = []
+  if not sess:
+    allm = _read_json(MESSAGES_FILE, [])
+    sess = [m for m in allm if m.get("sessionId") == session_id]
   out: List[Dict[str, str]] = []
   for m in sess[-40:]:
     r = m.get("role", "user")
@@ -437,9 +880,35 @@ def _post_cursor_bridge_webhook(session_id: str, user_text: str) -> None:
     pass
 
 
+def _render_index_html() -> str:
+  index_path = os.path.join(STATIC_DIR, "index.html")
+  html = _read_text(index_path, "")
+  if not html:
+    return ""
+  if STATIC_ASSET_BASE_URL:
+    html = html.replace('href="/static/styles.css"', f'href="{STATIC_ASSET_BASE_URL}/styles.css"')
+    html = html.replace('src="/static/app.js"', f'src="{STATIC_ASSET_BASE_URL}/app.js"')
+  return html
+
+
 @app.get("/")
 def index():
+  if STATIC_ASSET_BASE_URL:
+    html = _render_index_html()
+    if not html:
+      raise HTTPException(status_code=500, detail="index.html not found")
+    return Response(content=html, media_type="text/html; charset=utf-8")
   return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/healthz")
+def healthz() -> Dict[str, Any]:
+  return {
+    "ok": True,
+    "service": "web-browser-dashboard",
+    "storeBackend": _STORE.backend,
+    "staticAssetBaseUrl": STATIC_ASSET_BASE_URL or "",
+  }
 
 
 @app.get("/api/chat/sessions")
@@ -449,7 +918,30 @@ def get_sessions() -> List[Dict[str, Any]]:
 
 @app.get("/api/chat/messages")
 def get_messages() -> List[Dict[str, Any]]:
-  return _read_json(MESSAGES_FILE, [])
+  local_messages = _read_json(MESSAGES_FILE, [])
+  if not BRIDGE_CHAT_SYNC_ENABLED or bridge_list_messages is None:
+    return local_messages
+  session_order: List[str] = []
+  for item in local_messages:
+    sid = str(item.get("sessionId", ""))
+    if sid and sid not in session_order:
+      session_order.append(sid)
+  merged: List[Dict[str, Any]] = []
+  for sid in session_order:
+    try:
+      bridge_items = bridge_list_messages(limit=200, session_id=sid)
+    except Exception:
+      bridge_items = []
+    if bridge_items:
+      merged.extend(
+        {
+          "sessionId": sid,
+          "role": str(m.get("role", "user")),
+          "text": str(m.get("text", "")),
+        }
+        for m in bridge_items
+      )
+  return merged if merged else local_messages
 
 
 @app.get("/api/cursor-prompt")
@@ -509,20 +1001,28 @@ def delete_session(session_id: str) -> Dict[str, Any]:
 
 @app.get("/api/rules")
 def get_rules() -> Dict[str, Any]:
-  if not os.path.isfile(CURSOR_RULES_FILE):
-    return {"content": "", "path": CURSOR_RULES_FILE}
-  with open(CURSOR_RULES_FILE, encoding="utf-8") as f:
-    return {"content": f.read(), "path": CURSOR_RULES_FILE}
+  synced = _rules_sync_if_changed(force=False)
+  if not synced.get("changed"):
+    synced = _sync_rules_files()
+  return {
+    "content": synced.get("content", ""),
+    "path": CURSOR_RULES_FILE,
+    "sourcePath": synced.get("sourcePath", ""),
+    "syncedPaths": synced.get("writtenPaths", []),
+  }
 
 
 @app.put("/api/rules")
 def put_rules(body: RulesUpdate) -> Dict[str, Any]:
-  parent = os.path.dirname(CURSOR_RULES_FILE)
-  if parent:
-    os.makedirs(parent, exist_ok=True)
-  with open(CURSOR_RULES_FILE, "w", encoding="utf-8") as f:
-    f.write(body.content)
-  return {"ok": True, "path": CURSOR_RULES_FILE}
+  global _rules_sync_last_signature
+  written_paths: List[str] = []
+  for path in _rules_sync_targets():
+    if path and _write_text(path, body.content):
+      written_paths.append(path)
+  _rules_sync_last_signature = _rules_signature()
+  if not written_paths:
+    raise HTTPException(status_code=500, detail="규칙 파일 저장에 실패했습니다.")
+  return {"ok": True, "path": CURSOR_RULES_FILE, "syncedPaths": written_paths}
 
 
 @app.get("/api/site-config")
@@ -695,3 +1195,54 @@ def ack_queue(body: AckIn) -> Dict[str, Any]:
     status["latestScreenshotUrl"] = body.screenshotUrl
   _write_json(STATUS_FILE, status)
   return {"ok": True}
+
+
+@app.get("/api/runtime-snapshot")
+def runtime_snapshot(include_services: bool = Query(default=True), include_n8n: bool = Query(default=True)) -> Dict[str, Any]:
+  status = _read_json(STATUS_FILE, {})
+  if include_services:
+    cloud_run_health_url = _effective_setting("cloudRunHealthUrl", "CLOUD_RUN_HEALTH_URL", "")
+    unity_worker_health_url = _effective_setting("unityWorkerHealthUrl", "UNITY_WORKER_HEALTH_URL", "")
+    if cloud_run_health_url:
+      res = _get_url_json(cloud_run_health_url)
+      status["cloudRun"] = f"Cloud Run: {'healthy' if res['ok'] else 'down'}"
+    if unity_worker_health_url:
+      res = _get_url_json(unity_worker_health_url)
+      status["unityWorker"] = f"Unity Worker: {'healthy' if res['ok'] else 'down'}"
+
+  if include_n8n:
+    n8n_status_url = _effective_setting("n8nStatusUrl", "N8N_STATUS_URL", "")
+    if n8n_status_url:
+      res = _get_url_json(n8n_status_url)
+      status.setdefault("n8n", {})
+      status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
+      status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+  snapshot = _runtime_snapshot(status)
+  return {"ok": True, "snapshot": snapshot, "storeBackend": snapshot.get("storeBackend", "file")}
+
+
+@app.get("/api/pipeline-state")
+def pipeline_state(include_services: bool = Query(default=True), include_n8n: bool = Query(default=False)) -> Dict[str, Any]:
+  status = _read_json(STATUS_FILE, {})
+  queue_items = _read_json(QUEUE_FILE, [])
+
+  if include_services:
+    cloud_run_health_url = _effective_setting("cloudRunHealthUrl", "CLOUD_RUN_HEALTH_URL", "")
+    unity_worker_health_url = _effective_setting("unityWorkerHealthUrl", "UNITY_WORKER_HEALTH_URL", "")
+    if cloud_run_health_url:
+      res = _get_url_json(cloud_run_health_url)
+      status["cloudRun"] = f"Cloud Run: {'healthy' if res['ok'] else 'down'}"
+    if unity_worker_health_url:
+      res = _get_url_json(unity_worker_health_url)
+      status["unityWorker"] = f"Unity Worker: {'healthy' if res['ok'] else 'down'}"
+
+  if include_n8n:
+    n8n_status_url = _effective_setting("n8nStatusUrl", "N8N_STATUS_URL", "")
+    if n8n_status_url:
+      res = _get_url_json(n8n_status_url)
+      status.setdefault("n8n", {})
+      status["n8n"]["lastResult"] = "success" if res["ok"] else "failed"
+      status["n8n"]["lastTime"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+  return {"ok": True, "pipeline": _pipeline_state(status, queue_items), "storeBackend": _STORE.backend}

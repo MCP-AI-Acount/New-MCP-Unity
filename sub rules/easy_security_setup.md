@@ -4,10 +4,10 @@
 
 ```bash
 cd "/Users/Windows/Documents/MCP_ Sort/NewMCP"
-cp rules/.env.example rules/.env.local
+cp "main rules/.env.example" "main rules/.env.local"
 ```
 
-`rules/.env.local` 파일에서 `replace_me` 값만 실제 키로 바꾸면 끝.
+`main rules/.env.local` 파일에서 `replace_me` 값만 실제 키로 바꾸면 끝.
 
 ## 2) 터미널에 한 번 로드
 

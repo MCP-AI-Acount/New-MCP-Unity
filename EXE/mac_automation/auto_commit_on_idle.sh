@@ -1,17 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/Users/Windows/Documents/MCP_ Sort/NewMCP}"
-BRANCH_NAME="${BRANCH_NAME:-master}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_DIR="${REPO_DIR:-$DEFAULT_REPO_DIR}"
+BRANCH_NAME="${BRANCH_NAME:-}"
 IDLE_THRESHOLD_SECONDS="${IDLE_THRESHOLD_SECONDS:-300}"
 COMMIT_MESSAGE_PREFIX="${COMMIT_MESSAGE_PREFIX:-auto: idle checkpoint}"
 AUTO_PUSH="${AUTO_PUSH:-0}"
-ALLOW_PATHS_REGEX="${ALLOW_PATHS_REGEX:-^(MCP_Server/|collaboration/|common/|extensions/|rules/|EXE/|2_Option/|Option/|\\.gitignore$)}"
+ALLOW_PATHS_REGEX="${ALLOW_PATHS_REGEX:-^(MCP_Server/|collaboration/|common/|extensions/|main rules/|sub rules/|EXE/|2_Option/|Option/|\\.gitignore$)}"
 
 cd "$REPO_DIR"
 
 if [[ ! -d .git ]]; then
   exit 0
+fi
+
+if [[ -z "$BRANCH_NAME" ]]; then
+  BRANCH_NAME="$(git branch --show-current 2>/dev/null || true)"
+fi
+if [[ -z "$BRANCH_NAME" ]]; then
+  origin_head_ref="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [[ -n "$origin_head_ref" ]]; then
+    BRANCH_NAME="${origin_head_ref#refs/remotes/origin/}"
+  fi
+fi
+if [[ -z "$BRANCH_NAME" ]]; then
+  BRANCH_NAME="main"
 fi
 
 if [[ -n "$(git status --porcelain)" ]]; then

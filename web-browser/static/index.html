@@ -72,6 +72,7 @@
           <div class="status-tabs-wrap">
             <div class="status-tabs" id="statusTabs" role="tablist">
               <button type="button" class="status-tab active" data-tab="progress">진행 상황</button>
+              <button type="button" class="status-tab" data-tab="manual">메뉴얼</button>
               <button type="button" class="status-tab" data-tab="queue">큐</button>
               <button type="button" class="status-tab" data-tab="n8n">n8n</button>
               <button type="button" class="status-tab" data-tab="service">서비스</button>
@@ -79,6 +80,78 @@
               <button type="button" class="status-tab" data-tab="debug">디버그</button>
               <button type="button" class="status-tab" data-tab="cursorAgent">Cursor</button>
             </div>
+          </div>
+        </section>
+        <section id="manualPanel" class="status-card manual-card hidden" aria-label="운영 메뉴얼">
+          <div class="manual-section">
+            <h4>실시간 명령 파이프라인</h4>
+            <div class="venn-wrap">
+              <svg class="pipeline-svg" viewBox="0 0 980 220" role="img" aria-label="명령-커서클라우드-클라우드런-VM-Git 실시간 파이프라인">
+                <defs>
+                  <marker id="arrowHead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" class="pipeline-arrow-head"></polygon>
+                  </marker>
+                </defs>
+                <line class="pipeline-link" x1="170" y1="110" x2="215" y2="110"></line>
+                <line class="pipeline-link" x1="360" y1="110" x2="405" y2="110"></line>
+                <line class="pipeline-link" x1="550" y1="110" x2="595" y2="110"></line>
+                <line class="pipeline-link" x1="740" y1="110" x2="785" y2="110"></line>
+
+                <g id="pipelineStage-command">
+                  <rect class="pipeline-node" x="20" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="35" y="96">명령 입력</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-command" x="35" y="118">pending</text>
+                </g>
+
+                <g id="pipelineStage-cursor">
+                  <rect class="pipeline-node" x="210" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="225" y="96">Cursor Cloud</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-cursor" x="225" y="118">idle</text>
+                </g>
+
+                <g id="pipelineStage-cloudrun">
+                  <rect class="pipeline-node" x="400" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="415" y="96">Cloud Run</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-cloudrun" x="415" y="118">idle</text>
+                </g>
+
+                <g id="pipelineStage-vm">
+                  <rect class="pipeline-node" x="590" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="605" y="96">VM Worker</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-vm" x="605" y="118">idle</text>
+                </g>
+
+                <g id="pipelineStage-git">
+                  <rect class="pipeline-node" x="780" y="70" width="150" height="80"></rect>
+                  <text class="pipeline-node-text" x="795" y="96">Git</text>
+                  <text class="pipeline-node-sub" id="pipelineStatus-git" x="795" y="118">idle</text>
+                </g>
+              </svg>
+            </div>
+            <div class="pipeline-legend">
+              <span class="pipeline-badge ok">success</span>
+              <span class="pipeline-badge run">running</span>
+              <span class="pipeline-badge fail">failed</span>
+              <span class="pipeline-badge">pending/idle</span>
+            </div>
+            <p id="pipelineCurrentStage" class="pipeline-meta">현재 단계: -</p>
+            <p id="pipelineCurrentCommand" class="pipeline-meta">현재 명령: -</p>
+            <p id="pipelineLastUpdate" class="pipeline-meta">마지막 갱신: -</p>
+          </div>
+
+          <div class="manual-section">
+            <h4>기기별 제한 사항</h4>
+            <ul class="manual-list">
+              <li>아이폰: 화면 꺼짐/앱 전환 시 실시간 폴링 지연 가능, 명령은 Cloud Run 큐 기준으로 유지됨.</li>
+              <li>맥: 실제 로컬 파일 변경·git pull·Unity 실행 담당. launch agent 미동작 시 자동 실행 중단.</li>
+              <li>Cursor Cloud: 저장소 수정/커밋/푸시 담당. 맥 로컬 직접 경로 접근은 SSH 구성 필요.</li>
+              <li>Cloud Run: 요청 수신·상태 집계 중심. 장시간 무거운 Unity 실행은 VM Worker로 위임.</li>
+            </ul>
+          </div>
+
+          <div class="manual-section">
+            <h4>운영 상태 스냅샷</h4>
+            <div id="runtimeSnapshotGrid" class="health-grid"></div>
           </div>
         </section>
 
@@ -143,7 +216,7 @@
           <h2 id="rulesModalTitle">Cursor 최상위 규칙</h2>
           <button type="button" id="rulesModalClose" class="ghost-btn">닫기</button>
         </div>
-        <p class="modal-hint">아래 내용은 서버에 저장됩니다. 로컬 `.cursor/rules`와 동기화하려면 배포 후 파일을 복사하거나 환경변수 경로를 지정하세요.</p>
+        <p class="modal-hint">아래 내용은 서버에서 `.cursor/rules/cursor_top_rules.md` 와 `web-browser/data/cursor_top_rules.md`에 자동 동기화됩니다.</p>
         <textarea id="rulesTextarea" class="rules-textarea" placeholder="규칙을 입력하세요"></textarea>
         <div class="modal-actions">
           <button type="button" id="rulesSaveBtn" class="primary-btn">저장</button>

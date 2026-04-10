@@ -1,0 +1,32 @@
+@ git pat
+1. 니가 바꿀수 있는곳 1
+   - 파일: "# you/keys.env"
+   - 키: GITHUB_TOKEN
+   - 설명: one_command_git_flow.sh push 인증에 자동 사용됨.
+
+2. 니가 바꿀수 있는곳 2
+   - 파일: "# you/keys.env"
+   - 키: REMOTE_API_BEARER_TOKEN
+   - 설명: Cloud Run 게이트웨이 인증 토큰으로 자동 연동됨.
+
+3. 니가 바꿀수 있는곳 3
+   - 파일: "# you/keys.env"
+   - 키: UNITY_WORKER_BEARER_TOKEN
+   - 설명: Unity Worker 인증 토큰으로 자동 연동됨.
+
+4. 니가 바꿀수 있는곳 4
+   - 파일: "# you/keys.env"
+   - 키: BRIDGE_SHARED_TOKEN
+   - 설명: 맥 브리지 에이전트와 명령 공유 인증에 자동 사용됨.
+
+-1. 니가 바꿀수 없는 곳 2
+   - Cloud Run 콘솔에 이미 등록된 환경변수 값
+   - Firestore 권한/서비스 계정 정책
+   - GCP IAM 정책 자체
+
+내가 바꿔야할 곳 1
+1) "# you/keys.env"를 열고 필요한 키 값을 넣는다.
+2) 따옴표 없이 KEY=VALUE 형태로 저장한다.
+3) 기존 키 값 변경 시 저장만 하면 된다(스크립트가 자동 로드).
+4) Cloud Run/VM 쪽 고정 환경변수는 필요 시 재배포 스크립트를 실행한다.
+

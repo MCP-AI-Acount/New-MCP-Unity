@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/Users/Windows/Documents/MCP_ Sort/NewMCP}"
-ENV_FILE="${ENV_FILE:-$REPO_DIR/rules/.env.local}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${REPO_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+DEFAULT_ENV_FILE="$REPO_DIR/main rules/.env.local"
+ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
+
+if [[ -f "$REPO_DIR/common/load_you_keys.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$REPO_DIR/common/load_you_keys.sh"
+fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "env file not found: $ENV_FILE"
-  echo "cp \"$REPO_DIR/rules/.env.example\" \"$REPO_DIR/rules/.env.local\" 후 값 입력"
+  echo "cp \"$REPO_DIR/main rules/.env.example\" \"$REPO_DIR/main rules/.env.local\" 후 값 입력"
   exit 1
 fi
 

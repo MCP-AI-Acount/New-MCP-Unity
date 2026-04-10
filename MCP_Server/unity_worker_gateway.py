@@ -5,6 +5,8 @@ GCP VM 상에서 실행하는 Unity Worker HTTPS 게이트웨이
 
 import os
 import subprocess
+import base64
+import json
 from typing import Any, Dict
 
 from fastapi import FastAPI, Header, HTTPException
@@ -27,6 +29,13 @@ class UnityProjectRequest(BaseModel):
     project_name: str
     project_path: str = ""
     set_active: bool = True
+
+
+class UnityFileReadRequest(BaseModel):
+    request_id: str = ""
+    file_path: str
+    project_name: str = ""
+    project_path: str = ""
 
 
 def _check_bearer(auth_header: str) -> None:
@@ -56,7 +65,7 @@ def _run_unity_batch(
     if not resolved_project_path:
         return {"ok": False, "error": "UNITY_PROJECT_PATH 환경변수 또는 project_name/project_path가 필요합니다."}
 
-    task_json = str(task_payload).replace("'", '"')
+    task_json = json.dumps(task_payload, ensure_ascii=False)
     cmd = [
         unity_path,
         "-batchmode",
@@ -72,12 +81,38 @@ def _run_unity_batch(
         log_path,
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
+    log_excerpt = ""
+    if os.path.isfile(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                log_excerpt = f.read()[-12000:]
+        except OSError:
+            log_excerpt = ""
+
+    remote_error = ""
+    lower_log = log_excerpt.lower()
+    error_markers = [
+        "[remoteautomation] --tasktype is required",
+        "[remoteautomation] --taskpayload is required",
+        "[remoteautomation] task payload parse error",
+        "[remoteautomation] unsupported tasktype",
+        "[remoteautomation] play_and_capture error",
+        "[remoteautomation] set_canvas_graph_horizontal_green error",
+    ]
+    for marker in error_markers:
+        if marker in lower_log:
+            remote_error = marker
+            break
+
+    ok = proc.returncode == 0 and not remote_error
     return {
-        "ok": proc.returncode == 0,
+        "ok": ok,
         "returncode": proc.returncode,
         "stdout": proc.stdout[-3000:],
         "stderr": proc.stderr[-3000:],
         "log_path": log_path,
+        "log_excerpt": log_excerpt,
+        "remote_error": remote_error,
         "project_path": resolved_project_path,
     }
 
@@ -107,6 +142,32 @@ def _create_unity_project(project_name: str, project_path: str = "") -> Dict[str
         "project_path": project_path,
         "stdout": proc.stdout[-3000:],
         "stderr": proc.stderr[-3000:],
+    }
+
+
+def _read_file_base64(file_path: str, project_name: str = "", project_path: str = "") -> Dict[str, Any]:
+    resolved_project_path = resolve_project_path(project_name=project_name, project_path=project_path)
+    if not resolved_project_path:
+        resolved_project_path = os.environ.get("UNITY_PROJECT_PATH", "")
+
+    if os.path.isabs(file_path):
+        resolved_file_path = file_path
+    else:
+        if not resolved_project_path:
+            return {"ok": False, "error": "상대 경로 사용 시 UNITY_PROJECT_PATH 또는 project_name/project_path가 필요합니다."}
+        resolved_file_path = os.path.join(resolved_project_path, file_path)
+
+    if not os.path.isfile(resolved_file_path):
+        return {"ok": False, "error": f"파일을 찾을 수 없습니다: {resolved_file_path}"}
+
+    with open(resolved_file_path, "rb") as f:
+        raw = f.read()
+
+    return {
+        "ok": True,
+        "file_path": resolved_file_path,
+        "size_bytes": len(raw),
+        "content_base64": base64.b64encode(raw).decode("utf-8"),
     }
 
 
@@ -168,3 +229,18 @@ def set_active_project(body: UnityProjectRequest, authorization: str = Header(de
         set_active=True,
     )
     return {"ok": True, "registry": registry}
+
+
+@app.post("/v1/files/read")
+def read_file(body: UnityFileReadRequest, authorization: str = Header(default="")) -> Dict[str, Any]:
+    _check_bearer(authorization)
+    result = _read_file_base64(
+        file_path=body.file_path,
+        project_name=body.project_name,
+        project_path=body.project_path,
+    )
+    return {
+        "ok": bool(result.get("ok")),
+        "request_id": body.request_id,
+        "result": result,
+    }

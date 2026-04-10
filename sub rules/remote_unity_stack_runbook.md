@@ -14,6 +14,17 @@ chmod +x EXE/setup_remote_unity_stack.sh
 PROJECT_ID=<your-project-id> REGION=asia-northeast3 ZONE=asia-northeast3-a EXE/setup_remote_unity_stack.sh
 ```
 
+Cloud Run 최소 배포(게이트웨이만)만 따로 수행하려면:
+
+```bash
+bash EXE/deploy_cloud_run_gateway_minimal.sh
+```
+
+- 이 스크립트는 임시 빌드 디렉토리를 만들고
+- `MCP_Server/`, `collaboration/`, `common/`, `requirements-cloudrun.txt`만 포함해
+- Cloud Run에 최소 소스만 배포합니다.
+- Unity 프로젝트(씬/에셋)는 Git 저장소/VM 경로에 유지하며 Cloud Run에는 올리지 않습니다.
+
 ## 2. VM에 Unity Worker 올리기
 
 1) VM 접속 후 Python 설치
@@ -58,11 +69,39 @@ curl -X POST "https://<cloud-run-url>/v1/unity/tasks/run" \
   }'
 ```
 
+비동기(기본값, 휴대폰 대기모드 대비):
+
+```bash
+curl -X POST "https://<cloud-run-url>/v1/unity/tasks/run" \
+  -H "Authorization: Bearer <REMOTE_API_BEARER_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_id":"unity-req-2",
+    "task_type":"set_canvas_graph_horizontal_green",
+    "task_payload":{
+      "scene":"SampleScene",
+      "canvasName":"Canvas",
+      "graphName":"Graph",
+      "colorHex":"#00FF00"
+    },
+    "project_name":"ReportMaker",
+    "unity_worker_url":"https://<vm-public-ip>:8443",
+    "n8n_webhook_url":"https://<n8n-webhook>",
+    "run_async": true
+  }'
+```
+
+응답에는 `accepted=true` 와 `cloud_task_name` 이 반환되며, 작업 결과는 `n8n_webhook_url`로 수신합니다.  
+Cloud Tasks 큐에 들어간 작업은 클라이언트(아이폰) 연결이 끊겨도 백그라운드에서 계속 진행됩니다.
+
 ## 4. 무료티어/비용 전략
 
 - Cloud Run: `min-instances=0`, `max-instances=1`
 - VM: 평시 중지, 작업 시간에만 시작(스케줄러 사용)
 - 로그/스토리지 수명주기 정책 적용
+- 보안 기본값:
+  - Cloud Run 게이트웨이 공개 접근은 기본 비활성(`ALLOW_UNAUTHENTICATED=false`)
+  - VM 워커 방화벽은 `UNITY_WORKER_SOURCE_RANGES`로 허용 IP 대역을 명시해야 생성
 
 ## 5. 보안
 

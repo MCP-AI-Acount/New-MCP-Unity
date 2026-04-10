@@ -13,7 +13,7 @@ gcloud config set project <GCP_PROJECT_ID>
 gcloud run deploy remote-mcp-gateway \
   --source . \
   --region asia-northeast3 \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --set-env-vars REMOTE_API_BEARER_TOKEN=<YOUR_TOKEN>,N8N_WEBHOOK_URL=<YOUR_WEBHOOK> \
   --min-instances 0 \
   --max-instances 1 \
@@ -63,7 +63,7 @@ curl -X POST "https://<cloud-run-url>/v1/tasks/run" \
     "request_id":"mobile-test-1",
     "task_type":"screenshot_to_sheet",
     "image_path":"temp/capture.png",
-    "template_path":"rules/sheets_ocr_template.example.json",
+    "template_path":"main rules/sheets_ocr_template.example.json",
     "spreadsheet_id":"<SPREADSHEET_ID>",
     "dry_run": true
   }'
@@ -75,6 +75,20 @@ curl -X POST "https://<cloud-run-url>/v1/tasks/run" \
 - `--max-instances 1`로 급격한 과금 방지
 - 장시간 작업이 아니면 `CPU always allocated` 옵션 비활성 유지
 - Artifact Registry 이미지 정리 주기 설정
+
+## 4-1) 권장 배포 스크립트 (보안/최소배포)
+
+저장소 루트에서:
+
+```bash
+ALLOW_UNAUTHENTICATED=false \
+UNITY_WORKER_SOURCE_RANGES=<허용CIDR> \
+bash EXE/setup_remote_unity_stack.sh
+```
+
+- `ALLOW_UNAUTHENTICATED=false` 기본 (인증 없는 공개 엔드포인트 방지)
+- `UNITY_WORKER_SOURCE_RANGES` 필수 (예: `203.0.113.0/24`)  
+  `0.0.0.0/0` 공개 허용은 권장하지 않음
 
 ## 5) 데이터 학습 제외/보안
 

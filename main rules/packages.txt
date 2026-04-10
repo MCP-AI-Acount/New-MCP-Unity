@@ -1,4 +1,4 @@
-# n8n (전역): npm install -g n8n — 상세 rules/api_keys_n8n.md
+# n8n (전역): npm install -g n8n — 상세 sub rules/api_keys_n8n.md
 sleepwatcher (macOS sleep/wake hook)
 fastapi
 uvicorn[standard]
@@ -8,6 +8,9 @@ google-auth
 google-auth-oauthlib
 pillow
 pytesseract
+google-cloud-tasks
+google-cloud-firestore
+requests
 # NewMCP Python MCP — google-calendar (MCP_Server/google_calendar_mcp.py)
 mcp
 google-api-python-client
