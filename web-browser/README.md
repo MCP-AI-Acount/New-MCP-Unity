@@ -7,7 +7,7 @@
 ```bash
 cd "/Users/Windows/Documents/MCP_ Sort/NewMCP/web-browser"
 python3 -m pip install -r requirements.txt
-uvicorn __server:app --host 0.0.0.0 --port 8090
+uvicorn server:app --host 0.0.0.0 --port 8090
 ```
 
 접속:

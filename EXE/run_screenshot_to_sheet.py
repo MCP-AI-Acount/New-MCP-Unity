@@ -10,7 +10,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from collaboration.__screenshot_to_sheet_pipeline import main
+from collaboration.screenshot_to_sheet_pipeline import main
 
 if __name__ == "__main__":
     main()

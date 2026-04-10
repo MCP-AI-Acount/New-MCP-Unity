@@ -12,7 +12,7 @@ from typing import Any, Dict
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from common.__unity_project_registry import load_registry, resolve_project_path, set_project
+from common.unity_project_registry import load_registry, resolve_project_path, set_project
 
 app = FastAPI(title="unity-worker-gateway", version="1.0.0")
 

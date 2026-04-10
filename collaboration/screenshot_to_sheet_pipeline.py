@@ -11,9 +11,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from common.__google_sheets_client import append_row
-from common.__ocr_image import ocr_image_path
-from common.__template_fill import fill_row_from_template
+from common.google_sheets_client import append_row
+from common.ocr_image import ocr_image_path
+from common.template_fill import fill_row_from_template
 
 
 def load_template(path: str) -> dict:
